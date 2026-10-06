@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/enemy.gd" id="1"]
 
@@ -7,6 +7,9 @@ size = Vector2(28, 14)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
 size = Vector2(28, 56)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack"]
+size = Vector2(40, 40)
 
 [node name="Enemy" type="CharacterBody2D"]
 motion_mode = 1
@@ -36,3 +39,20 @@ offset_right = 20.0
 offset_bottom = -58.0
 horizontal_alignment = 1
 text = "30"
+
+[node name="AttackPivot" type="Node2D" parent="."]
+visible = false
+
+[node name="AttackArc" type="Polygon2D" parent="AttackPivot"]
+color = Color(1, 0.55, 0.35, 1)
+polygon = PackedVector2Array(16, -48, 36, -42, 52, -28, 36, -14, 16, -8, 26, -28)
+
+[node name="Hitbox" type="Area2D" parent="AttackPivot"]
+collision_layer = 0
+collision_mask = 4
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackPivot/Hitbox"]
+position = Vector2(34, -28)
+shape = SubResource("RectangleShape2D_attack")
