@@ -29,6 +29,9 @@ extends CharacterBody2D
 @export var attack_startup: float = 0.3
 @export var attack_active: float = 0.1
 @export var attack_recovery: float = 0.2
+# Telegraph during STARTUP: body turns this color and the danger zone (the real
+# Hitbox area) is shown, so the Player can read the swing and step out.
+@export var telegraph_color: Color = Color(1, 0.8, 0.2, 1)
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -51,6 +54,9 @@ var attack_landed: bool = false
 @onready var attack_pivot: Node2D = $AttackPivot
 # Monitoring is on only during ACTIVE.
 @onready var hitbox: Area2D = $AttackPivot/Hitbox
+@onready var attack_arc: Polygon2D = $AttackPivot/AttackArc
+# Placeholder danger zone matching the Hitbox; visible only during STARTUP.
+@onready var warn_zone: Polygon2D = $AttackPivot/WarnZone
 @onready var body: Polygon2D = $Body
 @onready var base_color: Color = body.color
 
@@ -81,7 +87,7 @@ func _physics_process(delta: float) -> void:
 	if flash_time_left > 0.0:
 		flash_time_left -= delta
 		if flash_time_left <= 0.0:
-			body.color = base_color
+			body.color = _body_color()
 
 
 func _chase(delta: float) -> void:
@@ -158,14 +164,23 @@ func _end_attack() -> void:
 func _set_attack_phase(phase: AttackPhase) -> void:
 	attack_phase = phase
 	hitbox.monitoring = phase == AttackPhase.ACTIVE
-	# Placeholder look per phase: faint wind-up, solid swing, dim recovery.
+	# Wind-up shows only the danger zone; the swing arc appears from ACTIVE on.
+	warn_zone.visible = phase == AttackPhase.STARTUP
+	attack_arc.visible = phase != AttackPhase.STARTUP
+	# Don't overwrite a hit flash still in progress; it restores the color when done.
+	if flash_time_left <= 0.0:
+		body.color = _body_color()
 	match phase:
 		AttackPhase.STARTUP:
-			attack_pivot.modulate = Color(1, 1, 1, 0.3)
+			attack_pivot.modulate = Color(1, 1, 1, 1)
 		AttackPhase.ACTIVE:
 			attack_pivot.modulate = Color(1, 1, 1, 1)
 		AttackPhase.RECOVERY:
 			attack_pivot.modulate = Color(0.6, 0.6, 0.6, 0.45)
+
+
+func _body_color() -> Color:
+	return telegraph_color if attack_phase == AttackPhase.STARTUP else base_color
 
 
 func _apply_hit() -> void:
