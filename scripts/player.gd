@@ -14,6 +14,13 @@ extends CharacterBody2D
 @export var hurt_flash_duration: float = 0.1
 @export var hurt_flash_color: Color = Color(1, 0.35, 0.35, 1)
 @export var dead_color: Color = Color(0.3, 0.3, 0.3, 1)
+# Roll (Shift): short burst in the move direction (facing if idle).
+# Travel = roll_speed * roll_duration (~110 px). Invincible for the first
+# roll_invincible s. roll_cooldown is measured from one roll start to the next.
+@export var roll_speed: float = 500.0
+@export var roll_duration: float = 0.22
+@export var roll_invincible: float = 0.18
+@export var roll_cooldown: float = 0.6
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -28,6 +35,10 @@ var in_hitstop: bool = false
 var hp: int
 var is_dead: bool = false
 var hurt_flash_left: float = 0.0
+var roll_time_left: float = 0.0
+var roll_dir: Vector2 = Vector2.ZERO
+var roll_cooldown_left: float = 0.0
+var is_invincible: bool = false
 
 @onready var visual: Node2D = $Visual
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
@@ -51,10 +62,22 @@ func _physics_process(delta: float) -> void:
 		if hurt_flash_left <= 0.0:
 			body.color = base_color
 
+	if roll_cooldown_left > 0.0:
+		roll_cooldown_left -= delta
+
 	var input := Vector2(
 		Input.get_axis("move_left", "move_right"),
 		Input.get_axis("move_up", "move_down")
 	)
+
+	if roll_time_left <= 0.0 and roll_cooldown_left <= 0.0 and Input.is_action_just_pressed("roll"):
+		_start_roll(input)
+
+	if roll_time_left > 0.0:
+		# Rolling: direction is fixed, no attacking until it ends.
+		_update_roll(delta)
+		return
+
 	# Normalize so diagonal movement is not faster than straight movement.
 	velocity = input.normalized() * speed
 	move_and_slide()
@@ -69,6 +92,41 @@ func _physics_process(delta: float) -> void:
 	# No combo or input buffer: a press during an attack is ignored.
 	elif Input.is_action_just_pressed("attack"):
 		_start_attack()
+
+
+func _start_roll(input: Vector2) -> void:
+	# A roll cancels any attack in progress (dodge beats commitment for now).
+	if attack_phase != AttackPhase.NONE:
+		attack_pivot.visible = false
+		_set_attack_phase(AttackPhase.NONE)
+	roll_dir = input.normalized() if input != Vector2.ZERO else Vector2(facing, 0)
+	if roll_dir.x != 0.0:
+		facing = 1 if roll_dir.x > 0.0 else -1
+		visual.scale.x = facing
+	roll_time_left = roll_duration
+	roll_cooldown_left = roll_cooldown
+	is_invincible = roll_invincible > 0.0
+	# Placeholder look: squashed while rolling, see-through while invincible.
+	visual.scale.y = 0.6
+	visual.modulate.a = 0.45 if is_invincible else 1.0
+
+
+func _update_roll(delta: float) -> void:
+	velocity = roll_dir * roll_speed
+	move_and_slide()
+	roll_time_left -= delta
+	if is_invincible and roll_duration - roll_time_left >= roll_invincible:
+		is_invincible = false
+		visual.modulate.a = 1.0
+	if roll_time_left <= 0.0:
+		_end_roll()
+
+
+func _end_roll() -> void:
+	roll_time_left = 0.0
+	is_invincible = false
+	visual.scale.y = 1.0
+	visual.modulate.a = 1.0
 
 
 func _start_attack() -> void:
@@ -137,7 +195,8 @@ func _end_hitstop() -> void:
 
 
 func take_damage(amount: int) -> void:
-	if is_dead:
+	# Roll i-frames: the hit is dodged (the enemy's swing still counts as spent).
+	if is_dead or is_invincible:
 		return
 	hp = maxi(hp - amount, 0)
 	hp_label.text = str(hp)
@@ -157,6 +216,7 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	attack_pivot.visible = false
 	_set_attack_phase(AttackPhase.NONE)
+	_end_roll()
 	$Hurtbox.set_deferred("monitorable", false)
 	hurt_flash_left = 0.0
 	body.color = dead_color
