@@ -238,10 +238,10 @@ position = Vector2(200, 450)
 [node name="Enemies" type="Node2D" parent="."]
 
 [node name="Enemy1" parent="Enemies" instance=ExtResource("2")]
-position = Vector2(240, 430)
+position = Vector2(420, 450)
 
 [node name="Enemy2" parent="Enemies" instance=ExtResource("2")]
-position = Vector2(240, 480)
+position = Vector2(290, 660)
 
 [node name="Enemy3" parent="Enemies" instance=ExtResource("2")]
-position = Vector2(140, 450)
+position = Vector2(750, 450)
