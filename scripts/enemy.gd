@@ -1,14 +1,18 @@
 extends CharacterBody2D
 
-# Test enemy: chases the Player in a straight line (no pathfinding) and stops nearby.
+# Test enemy: chases the Player in a straight line (no pathfinding) and stops
+# beside it on the same Y line, where the Player's left/right attack can reach.
 @export var max_hp: int = 30
 @export var move_speed: float = 90.0
 # Starts chasing when the Player comes within detect_range px.
 @export var detect_range: float = 300.0
 # Gives up once the Player is farther than lose_range px (> detect_range so it doesn't flicker at the edge).
 @export var lose_range: float = 400.0
-# Stops approaching at this distance (px) from the Player.
+# Horizontal distance (px) kept from the Player once on the same combat line.
 @export var stop_distance: float = 50.0
+# Max Y difference (px) that still counts as the Player's combat line.
+# The Player only attacks left/right, so the enemy must be within this to stop.
+@export var vertical_tolerance: float = 24.0
 # Knockback: slides knockback_distance px over knockback_duration s, then stops.
 @export var knockback_distance: float = 24.0
 @export var knockback_duration: float = 0.1
@@ -20,6 +24,8 @@ var knockback_dir: int = 0
 var knockback_time_left: float = 0.0
 var flash_time_left: float = 0.0
 var is_chasing: bool = false
+# Which side of the Player to stand on: 1 = right, -1 = left.
+var side: int = 1
 var player: Node2D
 
 @onready var hp_label: Label = $HpLabel
@@ -62,12 +68,26 @@ func _chase(delta: float) -> void:
 	elif is_chasing and dist > lose_range:
 		is_chasing = false
 
-	if is_chasing and dist > stop_distance and delta > 0.0:
-		# normalized() keeps diagonal speed equal to straight speed.
-		# Capped so the last step lands on stop_distance instead of overshooting.
-		var speed := minf(move_speed, (dist - stop_distance) / delta)
-		velocity = to_player.normalized() * speed
-		move_and_slide()
+	if not is_chasing or delta <= 0.0:
+		return
+
+	# Stay on the side we're already on; directly above/below keeps the last side.
+	var dx := global_position.x - player.global_position.x
+	if dx != 0.0:
+		side = 1 if dx > 0.0 else -1
+	# Stopped only when on the Player's Y line and at a left/right attack distance.
+	# Lower bound (half of stop_distance) keeps it from parking right above/below the Player.
+	var on_line := absf(to_player.y) <= vertical_tolerance
+	var at_side := absf(dx) <= stop_distance and absf(dx) >= stop_distance * 0.5
+	if on_line and at_side:
+		return
+
+	# Head for the combat spot beside the Player instead of the Player itself.
+	var to_spot := player.global_position + Vector2(side * stop_distance, 0.0) - global_position
+	# Capped so the last step lands on the spot instead of overshooting (no jitter).
+	var speed := minf(move_speed, to_spot.length() / delta)
+	velocity = to_spot.normalized() * speed
+	move_and_slide()
 
 
 # direction: 1 = right, -1 = left, 0 = no knockback.
