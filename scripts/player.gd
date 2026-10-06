@@ -49,6 +49,8 @@ var is_invincible: bool = false
 @onready var base_color: Color = body.color
 # Test readout only, not a HUD.
 @onready var hp_label: Label = $HpLabel
+# Placeholder "Game Over" text, shown on death.
+@onready var game_over: CanvasLayer = $GameOver
 
 
 func _ready() -> void:
@@ -220,6 +222,21 @@ func _die() -> void:
 	$Hurtbox.set_deferred("monitorable", false)
 	hurt_flash_left = 0.0
 	body.color = dead_color
+	game_over.visible = true
+
+
+func _process(_delta: float) -> void:
+	# _physics_process is off after death, so the restart key is read here.
+	if is_dead and Input.is_action_just_pressed("restart"):
+		_restart()
+
+
+func _restart() -> void:
+	# Unfreeze first in case death happened during hitstop.
+	if in_hitstop:
+		_end_hitstop()
+	Engine.time_scale = 1.0
+	get_tree().reload_current_scene()
 
 
 func _exit_tree() -> void:
