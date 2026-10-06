@@ -47,6 +47,11 @@ visible = false
 color = Color(1, 0.55, 0.35, 1)
 polygon = PackedVector2Array(16, -48, 36, -42, 52, -28, 36, -14, 16, -8, 26, -28)
 
+[node name="WarnZone" type="Polygon2D" parent="AttackPivot"]
+visible = false
+color = Color(1, 0.2, 0.1, 0.35)
+polygon = PackedVector2Array(14, -48, 54, -48, 54, -8, 14, -8)
+
 [node name="Hitbox" type="Area2D" parent="AttackPivot"]
 collision_layer = 0
 collision_mask = 4
