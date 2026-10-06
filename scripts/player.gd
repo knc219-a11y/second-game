@@ -9,6 +9,11 @@ extends CharacterBody2D
 @export var attack_damage: int = 10
 # Brief global freeze when an attack lands (real-time seconds).
 @export var hitstop_duration: float = 0.05
+@export var max_hp: int = 100
+# Brief color flash when hit by an enemy (no hitstop/knockback on the Player).
+@export var hurt_flash_duration: float = 0.1
+@export var hurt_flash_color: Color = Color(1, 0.35, 0.35, 1)
+@export var dead_color: Color = Color(0.3, 0.3, 0.3, 1)
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -20,15 +25,32 @@ var attack_time: float = 0.0
 # Enemies already hit by the current attack (one hit per enemy per attack).
 var hit_targets: Array[Node] = []
 var in_hitstop: bool = false
+var hp: int
+var is_dead: bool = false
+var hurt_flash_left: float = 0.0
 
 @onready var visual: Node2D = $Visual
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
 @onready var attack_pivot: Node2D = $AttackPivot
 # Monitoring is on only during ACTIVE.
 @onready var hitbox: Area2D = $AttackPivot/Hitbox
+@onready var body: Polygon2D = $Visual/Body
+@onready var base_color: Color = body.color
+# Test readout only, not a HUD.
+@onready var hp_label: Label = $HpLabel
+
+
+func _ready() -> void:
+	hp = max_hp
+	hp_label.text = str(hp)
 
 
 func _physics_process(delta: float) -> void:
+	if hurt_flash_left > 0.0:
+		hurt_flash_left -= delta
+		if hurt_flash_left <= 0.0:
+			body.color = base_color
+
 	var input := Vector2(
 		Input.get_axis("move_left", "move_right"),
 		Input.get_axis("move_up", "move_down")
@@ -112,6 +134,32 @@ func _start_hitstop() -> void:
 func _end_hitstop() -> void:
 	in_hitstop = false
 	Engine.time_scale = 1.0
+
+
+func take_damage(amount: int) -> void:
+	if is_dead:
+		return
+	hp = maxi(hp - amount, 0)
+	hp_label.text = str(hp)
+	print("Player HP: %d" % hp)
+	if hp <= 0:
+		_die()
+		return
+	body.color = hurt_flash_color
+	hurt_flash_left = hurt_flash_duration
+
+
+func _die() -> void:
+	is_dead = true
+	print("Player died")
+	# Minimal death: stop input/movement, cancel any attack, stop taking hits.
+	set_physics_process(false)
+	velocity = Vector2.ZERO
+	attack_pivot.visible = false
+	_set_attack_phase(AttackPhase.NONE)
+	$Hurtbox.set_deferred("monitorable", false)
+	hurt_flash_left = 0.0
+	body.color = dead_color
 
 
 func _exit_tree() -> void:

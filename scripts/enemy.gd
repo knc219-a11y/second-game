@@ -18,6 +18,19 @@ extends CharacterBody2D
 @export var knockback_duration: float = 0.1
 @export var flash_duration: float = 0.08
 @export var flash_color: Color = Color(1, 1, 1, 1)
+# Melee attack: starts when standing at the combat spot beside the Player.
+# attack_cooldown is measured from one attack start to the next.
+@export var attack_damage: int = 10
+# Max horizontal distance (px) to start an attack, a bit over stop_distance so an
+# enemy jammed just outside its spot (e.g. by another enemy) can still swing.
+# Keep it under the Hitbox reach (~68 px) so a swing started in range can land.
+@export var attack_range: float = 60.0
+@export var attack_cooldown: float = 1.0
+@export var attack_startup: float = 0.3
+@export var attack_active: float = 0.1
+@export var attack_recovery: float = 0.2
+
+enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
 var hp: int
 var knockback_dir: int = 0
@@ -27,8 +40,17 @@ var is_chasing: bool = false
 # Which side of the Player to stand on: 1 = right, -1 = left.
 var side: int = 1
 var player: Node2D
+var attack_phase: AttackPhase = AttackPhase.NONE
+var attack_time: float = 0.0
+var cooldown_left: float = 0.0
+# True once the current attack has damaged the Player (one hit per attack).
+var attack_landed: bool = false
 
 @onready var hp_label: Label = $HpLabel
+# Placeholder attack visual; scale.x is locked toward the Player at attack start.
+@onready var attack_pivot: Node2D = $AttackPivot
+# Monitoring is on only during ACTIVE.
+@onready var hitbox: Area2D = $AttackPivot/Hitbox
 @onready var body: Polygon2D = $Body
 @onready var base_color: Color = body.color
 
@@ -40,12 +62,19 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# Knockback takes priority: no chase movement until it ends.
+	if cooldown_left > 0.0:
+		cooldown_left -= delta
+
+	# Priority: knockback > attack > chase.
 	if knockback_time_left > 0.0:
 		var step := minf(delta, knockback_time_left)
 		knockback_time_left -= step
 		# move_and_collide so walls and other bodies stop the slide.
 		move_and_collide(Vector2(knockback_dir * knockback_distance / knockback_duration * step, 0.0))
+	elif attack_phase != AttackPhase.NONE:
+		# Stands still for the whole attack so it never slides mid-swing.
+		velocity = Vector2.ZERO
+		_update_attack(delta)
 	else:
 		_chase(delta)
 
@@ -57,7 +86,7 @@ func _physics_process(delta: float) -> void:
 
 func _chase(delta: float) -> void:
 	velocity = Vector2.ZERO
-	if not is_instance_valid(player):
+	if not is_instance_valid(player) or _player_is_dead():
 		is_chasing = false
 		return
 
@@ -78,6 +107,10 @@ func _chase(delta: float) -> void:
 	# Stopped only when on the Player's Y line and at a left/right attack distance.
 	# Lower bound (half of stop_distance) keeps it from parking right above/below the Player.
 	var on_line := absf(to_player.y) <= vertical_tolerance
+	var in_attack_range := on_line and absf(dx) <= attack_range and absf(dx) >= stop_distance * 0.5
+	if in_attack_range and cooldown_left <= 0.0:
+		_start_attack()
+		return
 	var at_side := absf(dx) <= stop_distance and absf(dx) >= stop_distance * 0.5
 	if on_line and at_side:
 		return
@@ -88,6 +121,62 @@ func _chase(delta: float) -> void:
 	var speed := minf(move_speed, to_spot.length() / delta)
 	velocity = to_spot.normalized() * speed
 	move_and_slide()
+
+
+func _player_is_dead() -> bool:
+	return player.get("is_dead") == true
+
+
+func _start_attack() -> void:
+	attack_time = 0.0
+	attack_landed = false
+	cooldown_left = attack_cooldown
+	# Left/right only: swing toward the side the Player is on.
+	attack_pivot.scale.x = 1 if player.global_position.x >= global_position.x else -1
+	attack_pivot.visible = true
+	_set_attack_phase(AttackPhase.STARTUP)
+
+
+func _update_attack(delta: float) -> void:
+	attack_time += delta
+	if attack_time < attack_startup:
+		_set_attack_phase(AttackPhase.STARTUP)
+	elif attack_time < attack_startup + attack_active:
+		_set_attack_phase(AttackPhase.ACTIVE)
+		_apply_hit()
+	elif attack_time < attack_startup + attack_active + attack_recovery:
+		_set_attack_phase(AttackPhase.RECOVERY)
+	else:
+		_end_attack()
+
+
+func _end_attack() -> void:
+	attack_pivot.visible = false
+	_set_attack_phase(AttackPhase.NONE)
+
+
+func _set_attack_phase(phase: AttackPhase) -> void:
+	attack_phase = phase
+	hitbox.monitoring = phase == AttackPhase.ACTIVE
+	# Placeholder look per phase: faint wind-up, solid swing, dim recovery.
+	match phase:
+		AttackPhase.STARTUP:
+			attack_pivot.modulate = Color(1, 1, 1, 0.3)
+		AttackPhase.ACTIVE:
+			attack_pivot.modulate = Color(1, 1, 1, 1)
+		AttackPhase.RECOVERY:
+			attack_pivot.modulate = Color(0.6, 0.6, 0.6, 0.45)
+
+
+func _apply_hit() -> void:
+	if attack_landed:
+		return
+	for area in hitbox.get_overlapping_areas():
+		var target := area.get_parent()
+		if target.has_method("take_damage"):
+			target.take_damage(attack_damage)
+			attack_landed = true
+			return
 
 
 # direction: 1 = right, -1 = left, 0 = no knockback.
@@ -103,5 +192,8 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	flash_time_left = flash_duration
 
 	if direction != 0 and knockback_duration > 0.0:
+		# Knockback interrupts the attack; the cooldown keeps running.
+		if attack_phase != AttackPhase.NONE:
+			_end_attack()
 		knockback_dir = direction
 		knockback_time_left = knockback_duration
