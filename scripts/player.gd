@@ -10,9 +10,14 @@ extends CharacterBody2D
 # Brief global freeze when an attack lands (real-time seconds).
 @export var hitstop_duration: float = 0.05
 @export var max_hp: int = 100
-# Brief color flash when hit by an enemy (no hitstop/knockback on the Player).
+# Hit reaction when an enemy lands a hit: color flash, a short freeze and a
+# left/right push away from the enemy. Attacks keep running (no stagger) and a
+# roll cancels the push.
 @export var hurt_flash_duration: float = 0.1
 @export var hurt_flash_color: Color = Color(1, 0.35, 0.35, 1)
+@export var hurt_hitstop_duration: float = 0.08
+@export var hurt_knockback_distance: float = 32.0
+@export var hurt_knockback_duration: float = 0.12
 @export var dead_color: Color = Color(0.3, 0.3, 0.3, 1)
 # Roll (Space): short burst in the move direction (facing if idle).
 # Travel = roll_speed * roll_duration (~110 px). Invincible for the first
@@ -39,6 +44,8 @@ var roll_time_left: float = 0.0
 var roll_dir: Vector2 = Vector2.ZERO
 var roll_cooldown_left: float = 0.0
 var is_invincible: bool = false
+var hurt_knockback_dir: int = 0
+var hurt_knockback_left: float = 0.0
 
 @onready var visual: Node2D = $Visual
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
@@ -80,8 +87,16 @@ func _physics_process(delta: float) -> void:
 		_update_roll(delta)
 		return
 
-	# Normalize so diagonal movement is not faster than straight movement.
-	velocity = input.normalized() * speed
+	if hurt_knockback_left > 0.0:
+		# Pushed back: the push replaces movement input until it ends.
+		var step := minf(delta, hurt_knockback_left)
+		hurt_knockback_left -= step
+		# Scaled on the last partial frame so the total push is exactly the distance.
+		var push_speed := hurt_knockback_distance / hurt_knockback_duration
+		velocity = Vector2(hurt_knockback_dir * push_speed * (step / delta if delta > 0.0 else 0.0), 0.0)
+	else:
+		# Normalize so diagonal movement is not faster than straight movement.
+		velocity = input.normalized() * speed
 	move_and_slide()
 
 	# Only horizontal input changes facing; W/S alone keeps the last facing.
@@ -106,6 +121,7 @@ func _start_roll(input: Vector2) -> void:
 		facing = 1 if roll_dir.x > 0.0 else -1
 		visual.scale.x = facing
 	roll_time_left = roll_duration
+	hurt_knockback_left = 0.0
 	roll_cooldown_left = roll_cooldown
 	is_invincible = roll_invincible > 0.0
 	# Placeholder look: squashed while rolling, see-through while invincible.
@@ -178,17 +194,17 @@ func _apply_hits() -> void:
 		landed = true
 	# One hitstop per frame no matter how many enemies were hit together.
 	if landed:
-		_start_hitstop()
+		_start_hitstop(hitstop_duration)
 
 
-func _start_hitstop() -> void:
+func _start_hitstop(duration: float) -> void:
 	# A hitstop already running is not extended or stacked.
-	if in_hitstop or hitstop_duration <= 0.0:
+	if in_hitstop or duration <= 0.0:
 		return
 	in_hitstop = true
 	Engine.time_scale = 0.0
 	# ignore_time_scale = true so the timer itself still runs while time is frozen.
-	get_tree().create_timer(hitstop_duration, true, false, true).timeout.connect(_end_hitstop)
+	get_tree().create_timer(duration, true, false, true).timeout.connect(_end_hitstop)
 
 
 func _end_hitstop() -> void:
@@ -196,7 +212,8 @@ func _end_hitstop() -> void:
 	Engine.time_scale = 1.0
 
 
-func take_damage(amount: int) -> void:
+# direction: 1 = push right, -1 = push left, 0 = no knockback.
+func take_damage(amount: int, direction: int = 0) -> void:
 	# Roll i-frames: the hit is dodged (the enemy's swing still counts as spent).
 	if is_dead or is_invincible:
 		return
@@ -208,6 +225,11 @@ func take_damage(amount: int) -> void:
 		return
 	body.color = hurt_flash_color
 	hurt_flash_left = hurt_flash_duration
+	# Rolling already moves the Player, so the push only applies outside a roll.
+	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0:
+		hurt_knockback_dir = direction
+		hurt_knockback_left = hurt_knockback_duration
+	_start_hitstop(hurt_hitstop_duration)
 
 
 func _die() -> void:
@@ -219,6 +241,7 @@ func _die() -> void:
 	attack_pivot.visible = false
 	_set_attack_phase(AttackPhase.NONE)
 	_end_roll()
+	hurt_knockback_left = 0.0
 	$Hurtbox.set_deferred("monitorable", false)
 	hurt_flash_left = 0.0
 	body.color = dead_color
