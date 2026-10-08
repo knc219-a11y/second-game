@@ -36,6 +36,13 @@ extends CharacterBody2D
 @export var roll_duration: float = 0.22
 @export var roll_invincible: float = 0.18
 @export var roll_cooldown: float = 0.6
+# The one weapon an enemy can drop (scenes/loot.tscn). Walking over the drop
+# equips it for the rest of the run: every combo hit deals weapon_damage_bonus
+# more (enemy 30 HP: 3 hits -> 2) and the swing arc takes weapon_arc_color.
+# R restart reloads the scene, so it starts unarmed again.
+@export var weapon_name: String = "Iron Sword"
+@export var weapon_damage_bonus: int = 10
+@export var weapon_arc_color: Color = Color(0.55, 0.95, 1, 1)
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -68,12 +75,13 @@ var hurt_knockback_dir: int = 0
 var hurt_knockback_left: float = 0.0
 # True from a roll start until the Player's feet are clear of every enemy body.
 var passing_enemies: bool = false
+var has_weapon: bool = false
 
 @onready var visual: Node2D = $Visual
 @onready var feet: CollisionShape2D = $CollisionShape2D
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
 @onready var attack_pivot: Node2D = $AttackPivot
-@onready var attack_arc: Node2D = $AttackPivot/AttackArc
+@onready var attack_arc: Polygon2D = $AttackPivot/AttackArc
 # Monitoring is on only during ACTIVE.
 @onready var hitbox: Area2D = $AttackPivot/Hitbox
 @onready var body: Polygon2D = $Visual/Body
@@ -82,6 +90,8 @@ var passing_enemies: bool = false
 @onready var hp_label: Label = $HpLabel
 # Placeholder "Game Over" text, shown on death.
 @onready var game_over: CanvasLayer = $GameOver
+# Placeholder readout of the equipped weapon (top-left of the screen).
+@onready var weapon_label: Label = $Hud/WeaponLabel
 
 
 func _ready() -> void:
@@ -249,11 +259,25 @@ func _apply_hits() -> void:
 			continue
 		hit_targets.append(target)
 		# Knock back along the facing locked at attack start, not the current facing.
-		target.take_damage(combo_damage[combo_index], int(attack_pivot.scale.x), combo_knockback_scale[combo_index])
+		target.take_damage(_hit_damage(), int(attack_pivot.scale.x), combo_knockback_scale[combo_index])
 		landed = true
 	# One hitstop per frame no matter how many enemies were hit together.
 	if landed:
 		_start_hitstop(combo_hitstop[combo_index])
+
+
+func _hit_damage() -> int:
+	return combo_damage[combo_index] + (weapon_damage_bonus if has_weapon else 0)
+
+
+func equip_weapon() -> void:
+	# Only one weapon exists; a second drop is just picked up and gone.
+	if has_weapon or is_dead:
+		return
+	has_weapon = true
+	print("Picked up %s (+%d damage)" % [weapon_name, weapon_damage_bonus])
+	weapon_label.text = "Weapon: %s (+%d damage)" % [weapon_name, weapon_damage_bonus]
+	attack_arc.color = weapon_arc_color
 
 
 func _start_hitstop(duration: float) -> void:
