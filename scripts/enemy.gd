@@ -13,6 +13,12 @@ extends CharacterBody2D
 # Max Y difference (px) that still counts as the Player's combat line.
 # The Player only attacks left/right, so the enemy must be within this to stop.
 @export var vertical_tolerance: float = 24.0
+# Crowding: if a closer enemy already holds this side's spot, take the other side
+# when it's free; if both are held, wait queue_spacing px behind the one ahead.
+@export var queue_spacing: float = 40.0
+# While switching to the far side, pass the Player this many px above/below
+# instead of walking straight into it.
+@export var cross_offset: float = 48.0
 # Knockback: slides knockback_distance px over knockback_duration s, then stops.
 @export var knockback_distance: float = 24.0
 @export var knockback_duration: float = 0.1
@@ -42,6 +48,8 @@ var flash_time_left: float = 0.0
 var is_chasing: bool = false
 # Which side of the Player to stand on: 1 = right, -1 = left.
 var side: int = 1
+# True while walking round the Player to the free far side (see _chase).
+var is_crossing: bool = false
 var player: Node2D
 var attack_phase: AttackPhase = AttackPhase.NONE
 var attack_time: float = 0.0
@@ -64,6 +72,7 @@ var attack_landed: bool = false
 func _ready() -> void:
 	hp = max_hp
 	hp_label.text = str(hp)
+	add_to_group("enemies")
 	player = get_tree().get_first_node_in_group("player") as Node2D
 
 
@@ -106,14 +115,28 @@ func _chase(delta: float) -> void:
 	if not is_chasing or delta <= 0.0:
 		return
 
-	# Stay on the side we're already on; directly above/below keeps the last side.
+	# Default to the side we're already on; directly above/below keeps the last side.
 	var dx := global_position.x - player.global_position.x
+	var near_side := side
 	if dx != 0.0:
-		side = 1 if dx > 0.0 else -1
+		near_side = 1 if dx > 0.0 else -1
+	# Crossing is over once level with the far spot (it then steps onto the line).
+	if is_crossing and dx * side >= stop_distance - 1.0:
+		is_crossing = false
+	# Keep going round to the far side until there, unless someone else took it.
+	if is_crossing and _count_ahead(side, INF) == 0:
+		pass
+	# Near side's spot held by a closer enemy and the far side empty: go there.
+	elif _count_ahead(near_side) > 0 and _count_ahead(-near_side, INF) == 0:
+		side = -near_side
+		is_crossing = true
+	else:
+		side = near_side
+		is_crossing = false
 	# Stopped only when on the Player's Y line and at a left/right attack distance.
 	# Lower bound (half of stop_distance) keeps it from parking right above/below the Player.
 	var on_line := absf(to_player.y) <= vertical_tolerance
-	var in_attack_range := on_line and absf(dx) <= attack_range and absf(dx) >= stop_distance * 0.5
+	var in_attack_range := not is_crossing and on_line and absf(dx) <= attack_range and absf(dx) >= stop_distance * 0.5
 	if in_attack_range and cooldown_left <= 0.0:
 		_start_attack()
 		return
@@ -121,12 +144,30 @@ func _chase(delta: float) -> void:
 	if on_line and at_side:
 		return
 
-	# Head for the combat spot beside the Player instead of the Player itself.
-	var to_spot := player.global_position + Vector2(side * stop_distance, 0.0) - global_position
+	# Head for the combat spot beside the Player instead of the Player itself,
+	# one queue_spacing further out per enemy already ahead on this side.
+	var spot := Vector2(side * (stop_distance + _count_ahead(side) * queue_spacing), 0.0)
+	if is_crossing:
+		# Go round past the Player's top/bottom, not through it or the enemy in front.
+		spot.y = cross_offset if to_player.y <= 0.0 else -cross_offset
+	var to_spot := player.global_position + spot - global_position
 	# Capped so the last step lands on the spot instead of overshooting (no jitter).
 	var speed := minf(move_speed, to_spot.length() / delta)
 	velocity = to_spot.normalized() * speed
 	move_and_slide()
+
+
+# Other chasing enemies on side s (by their chosen side) closer to the Player
+# than this one, or than max_dist when given.
+func _count_ahead(s: int, max_dist: float = -1.0) -> int:
+	var my_dist := global_position.distance_to(player.global_position) if max_dist < 0.0 else max_dist
+	var count := 0
+	for other in get_tree().get_nodes_in_group("enemies"):
+		if other == self or not other.is_chasing or other.side != s:
+			continue
+		if other.global_position.distance_to(player.global_position) < my_dist:
+			count += 1
+	return count
 
 
 func _player_is_dead() -> bool:
