@@ -117,6 +117,16 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Set: none (weapon + armor)"
 
+[node name="PetLabel" type="Label" parent="Hud"]
+offset_left = 16.0
+offset_top = 96.0
+offset_right = 516.0
+offset_bottom = 124.0
+theme_override_constants/outline_size = 6
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "Pet: none"
+
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(0, -28)
 position_smoothing_enabled = true

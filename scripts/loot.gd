@@ -6,20 +6,25 @@ extends Area2D
 @export var tier: int = 1
 # Armor drop instead of a weapon: shows the Armor shape instead of the sword.
 @export var is_armor: bool = false
+# Pet drop instead (tough enemies, rarely): shows the Pet shape.
+@export var is_pet: bool = false
 
 
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
-	$Visual/Sword.visible = not is_armor
-	$Visual/Hilt.visible = not is_armor
+	$Visual/Sword.visible = not is_armor and not is_pet
+	$Visual/Hilt.visible = not is_armor and not is_pet
 	$Visual/Armor.visible = is_armor
+	$Visual/Pet.visible = is_pet
 
 
 func _on_area_entered(area: Area2D) -> void:
 	var target := area.get_parent()
 	if not target.has_method("equip_weapon"):
 		return
-	if is_armor:
+	if is_pet:
+		target.equip_pet()
+	elif is_armor:
 		target.equip_armor()
 	else:
 		target.equip_weapon(tier)

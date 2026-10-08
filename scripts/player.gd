@@ -63,6 +63,12 @@ extends CharacterBody2D
 @export var shockwave_knockback_scale: float = 1.5
 @export var shockwave_duration: float = 0.25
 @export var shockwave_color: Color = Color(1, 0.95, 0.6, 1)
+# Pet: tough enemies rarely drop one (see test_map tough_pet_drop_chance). It
+# follows the Player and lends the tough enemy's passive in a small form: while
+# the Player is attacking, enemy hits don't push the Player back (damage and the
+# hit freeze still apply). One pet only, it doesn't fight; R resets it.
+@export var pet_name: String = "Brute Cub"
+@export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -99,6 +105,7 @@ var passing_enemies: bool = false
 var weapon_tier: int = 0
 var has_armor: bool = false
 var shockwave_time_left: float = 0.0
+var pet: Node2D = null
 
 @onready var visual: Node2D = $Visual
 @onready var feet: CollisionShape2D = $CollisionShape2D
@@ -117,6 +124,7 @@ var shockwave_time_left: float = 0.0
 @onready var weapon_label: Label = $Hud/WeaponLabel
 @onready var armor_label: Label = $Hud/ArmorLabel
 @onready var set_label: Label = $Hud/SetLabel
+@onready var pet_label: Label = $Hud/PetLabel
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
 @onready var shockwave_ring: Line2D = $ShockwaveRing
 
@@ -370,6 +378,19 @@ func equip_armor() -> void:
 	_update_set_label()
 
 
+func equip_pet() -> void:
+	if pet != null or is_dead:
+		return
+	pet = pet_scene.instantiate()
+	pet.player = self
+	pet.position = position + Vector2(-facing * pet.follow_offset.x, pet.follow_offset.y)
+	# Beside the Player in the scene, drawn just below it.
+	get_parent().add_child(pet)
+	get_parent().move_child(pet, get_index())
+	print("Picked up pet %s" % pet_name)
+	pet_label.text = "Pet: %s (no push while attacking)" % pet_name
+
+
 func _start_hitstop(duration: float) -> void:
 	# A hitstop already running is not extended or stacked.
 	if in_hitstop or duration <= 0.0:
@@ -403,8 +424,13 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	hurt_flash_left = hurt_flash_duration
 	# Rolling already moves the Player, so the push only applies outside a roll.
 	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0:
-		hurt_knockback_dir = direction
-		hurt_knockback_left = hurt_knockback_duration
+		if pet != null and attack_phase != AttackPhase.NONE:
+			# Pet passive: the attack holds its ground.
+			pet.flash()
+			print("Pet blocked the push")
+		else:
+			hurt_knockback_dir = direction
+			hurt_knockback_left = hurt_knockback_duration
 	_start_hitstop(hurt_hitstop_duration)
 
 
