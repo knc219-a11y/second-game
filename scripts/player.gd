@@ -16,7 +16,7 @@ extends CharacterBody2D
 @export var hurt_flash_duration: float = 0.1
 @export var hurt_flash_color: Color = Color(1, 0.35, 0.35, 1)
 @export var hurt_hitstop_duration: float = 0.08
-@export var hurt_knockback_distance: float = 32.0
+@export var hurt_knockback_distance: float = 16.0
 @export var hurt_knockback_duration: float = 0.12
 @export var dead_color: Color = Color(0.3, 0.3, 0.3, 1)
 # Roll (Space): short burst in the move direction (facing if idle).
