@@ -189,7 +189,8 @@ func _apply_hit() -> void:
 	for area in hitbox.get_overlapping_areas():
 		var target := area.get_parent()
 		if target.has_method("take_damage"):
-			target.take_damage(attack_damage)
+			# Push the Player the way the swing faces (left/right only).
+			target.take_damage(attack_damage, int(attack_pivot.scale.x))
 			attack_landed = true
 			return
 
