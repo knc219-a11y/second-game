@@ -42,6 +42,9 @@ extends CharacterBody2D
 # the Player already has it (there is only one weapon).
 @export var drop_chance: float = 0.35
 @export var loot_scene: PackedScene = preload("res://scenes/loot.tscn")
+# Hits during its own attack neither push it nor cancel the swing (the tough
+# variant), so the Player can't just mash through its wind-up and must dodge.
+@export var super_armor: bool = false
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -255,6 +258,8 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 	body.color = flash_color
 	flash_time_left = flash_duration
 
+	if super_armor and attack_phase != AttackPhase.NONE:
+		return
 	if direction != 0 and knockback_duration > 0.0:
 		# Knockback interrupts the attack; the cooldown keeps running.
 		if attack_phase != AttackPhase.NONE:
