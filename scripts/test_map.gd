@@ -18,6 +18,14 @@ extends Node2D
 # off-screen point would mean a 7-15 s walk before the enemy arrives.
 @export var spawn_min_distance: float = 400.0
 
+# Tough variant: this fraction of respawns has more HP, a better drop chance and
+# super armor (keeps swinging when hit), drawn bigger and darker to read at a glance.
+@export var tough_chance: float = 0.3
+@export var tough_hp: int = 100
+@export var tough_drop_chance: float = 0.7
+@export var tough_body_scale: float = 1.25
+@export var tough_color: Color = Color(0.45, 0.12, 0.2, 1)
+
 var respawn_left: float = 0.0
 
 @onready var enemies: Node2D = $Enemies
@@ -53,4 +61,17 @@ func _spawn_enemy() -> void:
 	# Spawned beyond detect_range: make it come for the Player anyway.
 	enemy.detect_range = INF
 	enemy.lose_range = INF
+	if randf() < tough_chance:
+		_make_tough(enemy)
 	enemies.add_child(enemy)
+
+
+# Called before add_child, so enemy._ready picks up the new HP and color.
+func _make_tough(enemy: Node) -> void:
+	enemy.name = "Tough"
+	enemy.max_hp = tough_hp
+	enemy.drop_chance = tough_drop_chance
+	enemy.super_armor = true
+	var body := enemy.get_node("Body") as Polygon2D
+	body.color = tough_color
+	body.scale = Vector2(tough_body_scale, tough_body_scale)
