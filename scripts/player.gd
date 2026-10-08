@@ -26,6 +26,13 @@ extends CharacterBody2D
 @export var roll_duration: float = 0.22
 @export var roll_invincible: float = 0.18
 @export var roll_cooldown: float = 0.6
+# A roll passes through enemy bodies (physics layer "enemy_body"); walls still
+# block it. Both ways are turned off: the Player ignores enemies, and its body
+# leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
+# roll ends inside an enemy, this lasts until the Player has walked out, so it
+# never gets stuck in or shoved out of one.
+const WORLD_LAYER := 1
+const ENEMY_BODY_LAYER := 4
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -46,8 +53,11 @@ var roll_cooldown_left: float = 0.0
 var is_invincible: bool = false
 var hurt_knockback_dir: int = 0
 var hurt_knockback_left: float = 0.0
+# True from a roll start until the Player's feet are clear of every enemy body.
+var passing_enemies: bool = false
 
 @onready var visual: Node2D = $Visual
+@onready var feet: CollisionShape2D = $CollisionShape2D
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
 @onready var attack_pivot: Node2D = $AttackPivot
 # Monitoring is on only during ACTIVE.
@@ -73,6 +83,9 @@ func _physics_process(delta: float) -> void:
 
 	if roll_cooldown_left > 0.0:
 		roll_cooldown_left -= delta
+
+	if passing_enemies and roll_time_left <= 0.0 and not _overlaps_enemy():
+		_set_passing_enemies(false)
 
 	var input := Vector2(
 		Input.get_axis("move_left", "move_right"),
@@ -123,6 +136,7 @@ func _start_roll(input: Vector2) -> void:
 	roll_time_left = roll_duration
 	hurt_knockback_left = 0.0
 	roll_cooldown_left = roll_cooldown
+	_set_passing_enemies(true)
 	is_invincible = roll_invincible > 0.0
 	# Placeholder look: squashed while rolling, see-through while invincible.
 	visual.scale.y = 0.6
@@ -145,6 +159,20 @@ func _end_roll() -> void:
 	is_invincible = false
 	visual.scale.y = 1.0
 	visual.modulate.a = 1.0
+
+
+func _set_passing_enemies(on: bool) -> void:
+	passing_enemies = on
+	set_collision_mask_value(ENEMY_BODY_LAYER, not on)
+	set_collision_layer_value(WORLD_LAYER, not on)
+
+
+func _overlaps_enemy() -> bool:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = feet.shape
+	query.transform = feet.global_transform
+	query.collision_mask = 1 << (ENEMY_BODY_LAYER - 1)
+	return not get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
 func _start_attack() -> void:
