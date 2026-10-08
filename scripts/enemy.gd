@@ -44,6 +44,7 @@ enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 var hp: int
 var knockback_dir: int = 0
 var knockback_time_left: float = 0.0
+var knockback_push: float = 0.0
 var flash_time_left: float = 0.0
 var is_chasing: bool = false
 # Which side of the Player to stand on: 1 = right, -1 = left.
@@ -85,7 +86,7 @@ func _physics_process(delta: float) -> void:
 		var step := minf(delta, knockback_time_left)
 		knockback_time_left -= step
 		# move_and_collide so walls and other bodies stop the slide.
-		move_and_collide(Vector2(knockback_dir * knockback_distance / knockback_duration * step, 0.0))
+		move_and_collide(Vector2(knockback_dir * knockback_push / knockback_duration * step, 0.0))
 	elif attack_phase != AttackPhase.NONE:
 		# Stands still for the whole attack so it never slides mid-swing.
 		velocity = Vector2.ZERO
@@ -237,7 +238,8 @@ func _apply_hit() -> void:
 
 
 # direction: 1 = right, -1 = left, 0 = no knockback.
-func take_damage(amount: int, direction: int = 0) -> void:
+# knockback_scale: multiplies knockback_distance (the Player's combo finisher pushes further).
+func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) -> void:
 	hp -= amount
 	hp_label.text = str(hp)
 	print("%s HP: %d" % [name, hp])
@@ -254,3 +256,4 @@ func take_damage(amount: int, direction: int = 0) -> void:
 			_end_attack()
 		knockback_dir = direction
 		knockback_time_left = knockback_duration
+		knockback_push = knockback_distance * knockback_scale

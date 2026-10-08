@@ -2,13 +2,23 @@ extends CharacterBody2D
 
 @export var speed: float = 220.0
 
-# Basic melee attack timing (seconds). Total = startup + active + recovery.
+# Basic melee attack timing (seconds). Total = startup + active + recovery,
+# with recovery taken from combo_recovery for the current hit.
 @export var attack_startup: float = 0.08
 @export var attack_active: float = 0.10
-@export var attack_recovery: float = 0.17
-@export var attack_damage: int = 10
-# Brief global freeze when an attack lands (real-time seconds).
-@export var hitstop_duration: float = 0.05
+# 3-hit combo on X. A press in the last combo_window s of a hit (end of ACTIVE
+# + RECOVERY) is remembered and the next hit starts as soon as this one ends.
+# No press in time and the combo goes back to hit 1. After hit 3 it loops.
+# Per-hit tables, index 0..2. combo_hitstop is the brief global freeze when
+# the hit lands (real-time seconds).
+@export var combo_window: float = 0.2
+@export var combo_damage: Array[int] = [10, 10, 15]
+@export var combo_recovery: Array[float] = [0.17, 0.17, 0.28]
+# Multiplies the enemy's own knockback distance.
+@export var combo_knockback_scale: Array[float] = [1.0, 1.0, 2.0]
+@export var combo_hitstop: Array[float] = [0.05, 0.05, 0.08]
+# Placeholder look: the arc is drawn bigger on the finisher (hitbox unchanged).
+@export var combo_arc_scale: Array[float] = [1.0, 1.0, 1.3]
 @export var max_hp: int = 100
 # Hit reaction when an enemy lands a hit: color flash, a short freeze and a
 # left/right push away from the enemy. Attacks keep running (no stagger) and a
@@ -43,6 +53,9 @@ var attack_phase: AttackPhase = AttackPhase.NONE
 var attack_time: float = 0.0
 # Enemies already hit by the current attack (one hit per enemy per attack).
 var hit_targets: Array[Node] = []
+# Which combo hit is running (0, 1, 2) and whether the next one is queued.
+var combo_index: int = 0
+var combo_queued: bool = false
 var in_hitstop: bool = false
 var hp: int
 var is_dead: bool = false
@@ -60,6 +73,7 @@ var passing_enemies: bool = false
 @onready var feet: CollisionShape2D = $CollisionShape2D
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
 @onready var attack_pivot: Node2D = $AttackPivot
+@onready var attack_arc: Node2D = $AttackPivot/AttackArc
 # Monitoring is on only during ACTIVE.
 @onready var hitbox: Area2D = $AttackPivot/Hitbox
 @onready var body: Polygon2D = $Visual/Body
@@ -118,17 +132,17 @@ func _physics_process(delta: float) -> void:
 		visual.scale.x = facing
 
 	if attack_phase != AttackPhase.NONE:
+		if Input.is_action_just_pressed("attack") and _attack_total() - attack_time <= combo_window:
+			combo_queued = true
 		_update_attack(delta)
-	# No combo or input buffer: a press during an attack is ignored.
 	elif Input.is_action_just_pressed("attack"):
-		_start_attack()
+		_start_attack(0)
 
 
 func _start_roll(input: Vector2) -> void:
 	# A roll cancels any attack in progress (dodge beats commitment for now).
 	if attack_phase != AttackPhase.NONE:
-		attack_pivot.visible = false
-		_set_attack_phase(AttackPhase.NONE)
+		_cancel_attack()
 	roll_dir = input.normalized() if input != Vector2.ZERO else Vector2(facing, 0)
 	if roll_dir.x != 0.0:
 		facing = 1 if roll_dir.x > 0.0 else -1
@@ -175,12 +189,20 @@ func _overlaps_enemy() -> bool:
 	return not get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
-func _start_attack() -> void:
+func _start_attack(index: int) -> void:
+	combo_index = index
+	combo_queued = false
 	attack_time = 0.0
 	hit_targets.clear()
+	# Each hit locks to the facing at its own start, so the Player can turn between hits.
 	attack_pivot.scale.x = facing
 	attack_pivot.visible = true
+	attack_arc.scale = Vector2.ONE * combo_arc_scale[combo_index]
 	_set_attack_phase(AttackPhase.STARTUP)
+
+
+func _attack_total() -> float:
+	return attack_startup + attack_active + combo_recovery[combo_index]
 
 
 func _update_attack(delta: float) -> void:
@@ -190,11 +212,20 @@ func _update_attack(delta: float) -> void:
 	elif attack_time < attack_startup + attack_active:
 		_set_attack_phase(AttackPhase.ACTIVE)
 		_apply_hits()
-	elif attack_time < attack_startup + attack_active + attack_recovery:
+	elif attack_time < _attack_total():
 		_set_attack_phase(AttackPhase.RECOVERY)
+	elif combo_queued:
+		_start_attack((combo_index + 1) % combo_damage.size())
 	else:
-		attack_pivot.visible = false
-		_set_attack_phase(AttackPhase.NONE)
+		_cancel_attack()
+
+
+# Ends the attack and resets the combo to hit 1.
+func _cancel_attack() -> void:
+	combo_index = 0
+	combo_queued = false
+	attack_pivot.visible = false
+	_set_attack_phase(AttackPhase.NONE)
 
 
 func _set_attack_phase(phase: AttackPhase) -> void:
@@ -218,11 +249,11 @@ func _apply_hits() -> void:
 			continue
 		hit_targets.append(target)
 		# Knock back along the facing locked at attack start, not the current facing.
-		target.take_damage(attack_damage, int(attack_pivot.scale.x))
+		target.take_damage(combo_damage[combo_index], int(attack_pivot.scale.x), combo_knockback_scale[combo_index])
 		landed = true
 	# One hitstop per frame no matter how many enemies were hit together.
 	if landed:
-		_start_hitstop(hitstop_duration)
+		_start_hitstop(combo_hitstop[combo_index])
 
 
 func _start_hitstop(duration: float) -> void:
@@ -266,8 +297,7 @@ func _die() -> void:
 	# Minimal death: stop input/movement, cancel any attack, stop taking hits.
 	set_physics_process(false)
 	velocity = Vector2.ZERO
-	attack_pivot.visible = false
-	_set_attack_phase(AttackPhase.NONE)
+	_cancel_attack()
 	_end_roll()
 	hurt_knockback_left = 0.0
 	$Hurtbox.set_deferred("monitorable", false)
