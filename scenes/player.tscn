@@ -56,6 +56,10 @@ monitoring = false
 position = Vector2(0, -28)
 shape = SubResource("RectangleShape2D_hurt")
 
+[node name="ShockwaveRing" type="Line2D" parent="."]
+visible = false
+width = 6.0
+
 [node name="HpLabel" type="Label" parent="."]
 offset_left = -24.0
 offset_top = -78.0
@@ -102,6 +106,16 @@ theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Armor: none"
+
+[node name="SetLabel" type="Label" parent="Hud"]
+offset_left = 16.0
+offset_top = 68.0
+offset_right = 516.0
+offset_bottom = 96.0
+theme_override_constants/outline_size = 6
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "Set: none (weapon + armor)"
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(0, -28)
