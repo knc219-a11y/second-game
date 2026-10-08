@@ -51,6 +51,18 @@ extends CharacterBody2D
 # as small a step as one weapon tier. One armor only for now; R resets it.
 @export var armor_name: String = "Leather Armor"
 @export var armor_damage_reduction: int = 2
+# Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
+# also releases a shockwave ring around the Player's feet. Every enemy inside
+# takes shockwave_damage and is pushed away (left/right) with
+# shockwave_knockback_scale. The ring is an ellipse (y squashed by
+# shockwave_y_scale) to match the top-down 2.5D floor; hit test uses the same shape.
+@export var set_name: String = "Warrior's Set"
+@export var shockwave_radius: float = 120.0
+@export var shockwave_y_scale: float = 0.5
+@export var shockwave_damage: int = 5
+@export var shockwave_knockback_scale: float = 1.5
+@export var shockwave_duration: float = 0.25
+@export var shockwave_color: Color = Color(1, 0.95, 0.6, 1)
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -86,6 +98,7 @@ var passing_enemies: bool = false
 # 0 = unarmed, otherwise the index+1 of the equipped weapon above.
 var weapon_tier: int = 0
 var has_armor: bool = false
+var shockwave_time_left: float = 0.0
 
 @onready var visual: Node2D = $Visual
 @onready var feet: CollisionShape2D = $CollisionShape2D
@@ -103,11 +116,20 @@ var has_armor: bool = false
 # Placeholder readout of the equipped weapon (top-left of the screen).
 @onready var weapon_label: Label = $Hud/WeaponLabel
 @onready var armor_label: Label = $Hud/ArmorLabel
+@onready var set_label: Label = $Hud/SetLabel
+# Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
+@onready var shockwave_ring: Line2D = $ShockwaveRing
 
 
 func _ready() -> void:
 	hp = max_hp
 	hp_label.text = str(hp)
+	var points := PackedVector2Array()
+	for i in 33:
+		var a := TAU * i / 32.0
+		points.append(Vector2(cos(a), sin(a) * shockwave_y_scale) * shockwave_radius)
+	shockwave_ring.points = points
+	shockwave_ring.default_color = shockwave_color
 
 
 func _physics_process(delta: float) -> void:
@@ -118,6 +140,10 @@ func _physics_process(delta: float) -> void:
 
 	if roll_cooldown_left > 0.0:
 		roll_cooldown_left -= delta
+
+	if shockwave_time_left > 0.0:
+		shockwave_time_left -= delta
+		_update_shockwave_ring()
 
 	if passing_enemies and roll_time_left <= 0.0 and not _overlaps_enemy():
 		_set_passing_enemies(false)
@@ -231,6 +257,9 @@ func _update_attack(delta: float) -> void:
 	if attack_time < attack_startup:
 		_set_attack_phase(AttackPhase.STARTUP)
 	elif attack_time < attack_startup + attack_active:
+		# Set shockwave goes first so the finisher's own bigger knockback wins on its target.
+		if attack_phase != AttackPhase.ACTIVE and combo_index == combo_damage.size() - 1 and has_set():
+			_release_shockwave()
 		_set_attack_phase(AttackPhase.ACTIVE)
 		_apply_hits()
 	elif attack_time < _attack_total():
@@ -266,7 +295,8 @@ func _apply_hits() -> void:
 	var landed := false
 	for area in hitbox.get_overlapping_areas():
 		var target := area.get_parent()
-		if target in hit_targets or not target.has_method("take_damage"):
+		# is_queued_for_deletion: already killed this frame (e.g. by the set shockwave).
+		if target in hit_targets or not target.has_method("take_damage") or target.is_queued_for_deletion():
 			continue
 		hit_targets.append(target)
 		# Knock back along the facing locked at attack start, not the current facing.
@@ -282,6 +312,43 @@ func _hit_damage() -> int:
 	return combo_damage[combo_index] + bonus
 
 
+func has_set() -> bool:
+	return weapon_tier > 0 and has_armor
+
+
+func _release_shockwave() -> void:
+	shockwave_time_left = shockwave_duration
+	_update_shockwave_ring()
+	var count := 0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.is_queued_for_deletion():
+			continue
+		var offset: Vector2 = enemy.global_position - global_position
+		offset.y /= shockwave_y_scale
+		if offset.length() > shockwave_radius:
+			continue
+		var dir := facing if is_zero_approx(offset.x) else int(signf(offset.x))
+		enemy.take_damage(shockwave_damage, dir, shockwave_knockback_scale)
+		count += 1
+	print("Set shockwave hit %d enemies" % count)
+
+
+func _update_shockwave_ring() -> void:
+	shockwave_ring.visible = shockwave_time_left > 0.0
+	# 0 at release -> 1 at the end: grows from 40% to full size and fades out.
+	var t := 1.0 - shockwave_time_left / shockwave_duration
+	shockwave_ring.scale = Vector2.ONE * lerpf(0.4, 1.0, t)
+	shockwave_ring.modulate.a = 1.0 - t
+
+
+func _update_set_label() -> void:
+	if has_set():
+		set_label.text = "Set: %s (3rd hit shockwave)" % set_name
+		print("Set active: %s" % set_name)
+	else:
+		set_label.text = "Set: none (weapon + armor)"
+
+
 func equip_weapon(tier: int) -> void:
 	# A drop no better than the current weapon is just picked up and gone.
 	if tier <= weapon_tier or is_dead:
@@ -291,6 +358,7 @@ func equip_weapon(tier: int) -> void:
 	print("Picked up %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]])
 	weapon_label.text = "Weapon: %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]]
 	attack_arc.color = weapon_arc_color[i]
+	_update_set_label()
 
 
 func equip_armor() -> void:
@@ -299,6 +367,7 @@ func equip_armor() -> void:
 	has_armor = true
 	print("Picked up %s (-%d damage taken)" % [armor_name, armor_damage_reduction])
 	armor_label.text = "Armor: %s (-%d damage taken)" % [armor_name, armor_damage_reduction]
+	_update_set_label()
 
 
 func _start_hitstop(duration: float) -> void:
@@ -348,6 +417,8 @@ func _die() -> void:
 	_cancel_attack()
 	_end_roll()
 	hurt_knockback_left = 0.0
+	shockwave_time_left = 0.0
+	shockwave_ring.visible = false
 	$Hurtbox.set_deferred("monitorable", false)
 	hurt_flash_left = 0.0
 	body.color = dead_color
