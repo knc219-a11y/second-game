@@ -39,11 +39,12 @@ extends CharacterBody2D
 # Weapons enemies can drop (scenes/loot.tscn), one entry per tier: tier 1 Iron
 # Sword (any enemy), tier 2 Steel Sword (tough enemies only). Walking over a drop
 # equips it for the rest of the run if it beats the current one: every combo hit
-# deals that tier's bonus more and the swing arc takes its color. Enemy 30 HP:
-# 3 hits unarmed, 2 with Iron, 1 with Steel; tough 100 HP: 7 / 5 / 4.
+# deals that tier's bonus more and the swing arc takes its color. Bonuses stay
+# small so one item is never a big jump (each tier shaves about one hit):
+# enemy 30 HP takes 3 hits unarmed / Iron / Steel; tough 100 HP: 9 / 8 / 7.
 # R restart reloads the scene, so it starts unarmed again.
 @export var weapon_names: Array[String] = ["Iron Sword", "Steel Sword"]
-@export var weapon_damage_bonus: Array[int] = [10, 20]
+@export var weapon_damage_bonus: Array[int] = [2, 4]
 @export var weapon_arc_color: Array[Color] = [Color(0.55, 0.95, 1, 1), Color(0.8, 0.5, 1, 1)]
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
