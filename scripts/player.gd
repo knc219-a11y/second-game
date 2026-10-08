@@ -14,7 +14,7 @@ extends CharacterBody2D
 @export var hurt_flash_duration: float = 0.1
 @export var hurt_flash_color: Color = Color(1, 0.35, 0.35, 1)
 @export var dead_color: Color = Color(0.3, 0.3, 0.3, 1)
-# Roll (Shift): short burst in the move direction (facing if idle).
+# Roll (Space): short burst in the move direction (facing if idle).
 # Travel = roll_speed * roll_duration (~110 px). Invincible for the first
 # roll_invincible s. roll_cooldown is measured from one roll start to the next.
 @export var roll_speed: float = 500.0
