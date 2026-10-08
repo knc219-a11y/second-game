@@ -36,13 +36,15 @@ extends CharacterBody2D
 @export var roll_duration: float = 0.22
 @export var roll_invincible: float = 0.18
 @export var roll_cooldown: float = 0.6
-# The one weapon an enemy can drop (scenes/loot.tscn). Walking over the drop
-# equips it for the rest of the run: every combo hit deals weapon_damage_bonus
-# more (enemy 30 HP: 3 hits -> 2) and the swing arc takes weapon_arc_color.
+# Weapons enemies can drop (scenes/loot.tscn), one entry per tier: tier 1 Iron
+# Sword (any enemy), tier 2 Steel Sword (tough enemies only). Walking over a drop
+# equips it for the rest of the run if it beats the current one: every combo hit
+# deals that tier's bonus more and the swing arc takes its color. Enemy 30 HP:
+# 3 hits unarmed, 2 with Iron, 1 with Steel; tough 100 HP: 7 / 5 / 4.
 # R restart reloads the scene, so it starts unarmed again.
-@export var weapon_name: String = "Iron Sword"
-@export var weapon_damage_bonus: int = 10
-@export var weapon_arc_color: Color = Color(0.55, 0.95, 1, 1)
+@export var weapon_names: Array[String] = ["Iron Sword", "Steel Sword"]
+@export var weapon_damage_bonus: Array[int] = [10, 20]
+@export var weapon_arc_color: Array[Color] = [Color(0.55, 0.95, 1, 1), Color(0.8, 0.5, 1, 1)]
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -75,7 +77,8 @@ var hurt_knockback_dir: int = 0
 var hurt_knockback_left: float = 0.0
 # True from a roll start until the Player's feet are clear of every enemy body.
 var passing_enemies: bool = false
-var has_weapon: bool = false
+# 0 = unarmed, otherwise the index+1 of the equipped weapon above.
+var weapon_tier: int = 0
 
 @onready var visual: Node2D = $Visual
 @onready var feet: CollisionShape2D = $CollisionShape2D
@@ -267,17 +270,19 @@ func _apply_hits() -> void:
 
 
 func _hit_damage() -> int:
-	return combo_damage[combo_index] + (weapon_damage_bonus if has_weapon else 0)
+	var bonus := weapon_damage_bonus[weapon_tier - 1] if weapon_tier > 0 else 0
+	return combo_damage[combo_index] + bonus
 
 
-func equip_weapon() -> void:
-	# Only one weapon exists; a second drop is just picked up and gone.
-	if has_weapon or is_dead:
+func equip_weapon(tier: int) -> void:
+	# A drop no better than the current weapon is just picked up and gone.
+	if tier <= weapon_tier or is_dead:
 		return
-	has_weapon = true
-	print("Picked up %s (+%d damage)" % [weapon_name, weapon_damage_bonus])
-	weapon_label.text = "Weapon: %s (+%d damage)" % [weapon_name, weapon_damage_bonus]
-	attack_arc.color = weapon_arc_color
+	weapon_tier = tier
+	var i := tier - 1
+	print("Picked up %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]])
+	weapon_label.text = "Weapon: %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]]
+	attack_arc.color = weapon_arc_color[i]
 
 
 func _start_hitstop(duration: float) -> void:

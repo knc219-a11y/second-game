@@ -38,9 +38,11 @@ extends CharacterBody2D
 # Telegraph during STARTUP: body turns this color and the danger zone (the real
 # Hitbox area) is shown, so the Player can read the swing and step out.
 @export var telegraph_color: Color = Color(1, 0.8, 0.2, 1)
-# On death, chance (0..1) to drop the Player's weapon where it fell. No drop once
-# the Player already has it (there is only one weapon).
+# On death, chance (0..1) to drop the Player's weapon of drop_tier (see
+# player.gd weapon_names) where it fell. No drop once the Player has that tier
+# or better. The tough variant drops tier 2.
 @export var drop_chance: float = 0.35
+@export var drop_tier: int = 1
 @export var loot_scene: PackedScene = preload("res://scenes/loot.tscn")
 # Hits during its own attack neither push it nor cancel the swing (the tough
 # variant), so the Player can't just mash through its wind-up and must dodge.
@@ -270,15 +272,17 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 
 
 func _try_drop_loot() -> void:
-	if not is_instance_valid(player) or player.get("has_weapon") == true:
+	if not is_instance_valid(player) or player.weapon_tier >= drop_tier:
 		return
 	if randf() >= drop_chance:
 		return
 	var loot := loot_scene.instantiate()
 	loot.position = global_position
+	loot.tier = drop_tier
+	loot.get_node("Visual/Sword").color = player.weapon_arc_color[drop_tier - 1]
 	# Next to the Player in the scene (not under Enemies, which the map counts),
 	# drawn just below it so the Player walks over the drop.
 	var parent := player.get_parent()
 	parent.add_child.call_deferred(loot)
 	parent.move_child.call_deferred(loot, player.get_index())
-	print("%s dropped loot" % name)
+	print("%s dropped loot (tier %d)" % [name, drop_tier])
