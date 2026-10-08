@@ -46,6 +46,11 @@ extends CharacterBody2D
 @export var weapon_names: Array[String] = ["Iron Sword", "Steel Sword"]
 @export var weapon_damage_bonus: Array[int] = [2, 4]
 @export var weapon_arc_color: Array[Color] = [Color(0.55, 0.95, 1, 1), Color(0.8, 0.5, 1, 1)]
+# Second slot: armor any enemy can rarely drop (see enemy.armor_drop_chance).
+# Once worn, every enemy hit deals armor_damage_reduction less (10 -> 8), about
+# as small a step as one weapon tier. One armor only for now; R resets it.
+@export var armor_name: String = "Leather Armor"
+@export var armor_damage_reduction: int = 2
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -80,6 +85,7 @@ var hurt_knockback_left: float = 0.0
 var passing_enemies: bool = false
 # 0 = unarmed, otherwise the index+1 of the equipped weapon above.
 var weapon_tier: int = 0
+var has_armor: bool = false
 
 @onready var visual: Node2D = $Visual
 @onready var feet: CollisionShape2D = $CollisionShape2D
@@ -96,6 +102,7 @@ var weapon_tier: int = 0
 @onready var game_over: CanvasLayer = $GameOver
 # Placeholder readout of the equipped weapon (top-left of the screen).
 @onready var weapon_label: Label = $Hud/WeaponLabel
+@onready var armor_label: Label = $Hud/ArmorLabel
 
 
 func _ready() -> void:
@@ -286,6 +293,14 @@ func equip_weapon(tier: int) -> void:
 	attack_arc.color = weapon_arc_color[i]
 
 
+func equip_armor() -> void:
+	if has_armor or is_dead:
+		return
+	has_armor = true
+	print("Picked up %s (-%d damage taken)" % [armor_name, armor_damage_reduction])
+	armor_label.text = "Armor: %s (-%d damage taken)" % [armor_name, armor_damage_reduction]
+
+
 func _start_hitstop(duration: float) -> void:
 	# A hitstop already running is not extended or stacked.
 	if in_hitstop or duration <= 0.0:
@@ -306,6 +321,9 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	# Roll i-frames: the hit is dodged (the enemy's swing still counts as spent).
 	if is_dead or is_invincible:
 		return
+	if has_armor:
+		# Never below 1 so armor can't make a hit free.
+		amount = maxi(amount - armor_damage_reduction, 1)
 	hp = maxi(hp - amount, 0)
 	hp_label.text = str(hp)
 	print("Player HP: %d" % hp)

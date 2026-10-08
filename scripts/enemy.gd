@@ -43,6 +43,9 @@ extends CharacterBody2D
 # or better. The tough variant drops tier 2.
 @export var drop_chance: float = 0.35
 @export var drop_tier: int = 1
+# Separate, rarer roll for the Player's armor (any enemy, tough included).
+# No drop once the Player wears it.
+@export var armor_drop_chance: float = 0.12
 @export var loot_scene: PackedScene = preload("res://scenes/loot.tscn")
 # Hits during its own attack neither push it nor cancel the swing (the tough
 # variant), so the Player can't just mash through its wind-up and must dodge.
@@ -254,6 +257,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 	print("%s HP: %d" % [name, hp])
 	if hp <= 0:
 		_try_drop_loot()
+		_try_drop_armor()
 		queue_free()
 		return
 
@@ -286,3 +290,18 @@ func _try_drop_loot() -> void:
 	parent.add_child.call_deferred(loot)
 	parent.move_child.call_deferred(loot, player.get_index())
 	print("%s dropped loot (tier %d)" % [name, drop_tier])
+
+
+func _try_drop_armor() -> void:
+	if not is_instance_valid(player) or player.has_armor:
+		return
+	if randf() >= armor_drop_chance:
+		return
+	var loot := loot_scene.instantiate()
+	# A little lower than a weapon drop so both stay visible if they drop together.
+	loot.position = global_position + Vector2(0, 24)
+	loot.is_armor = true
+	var parent := player.get_parent()
+	parent.add_child.call_deferred(loot)
+	parent.move_child.call_deferred(loot, player.get_index())
+	print("%s dropped armor" % name)

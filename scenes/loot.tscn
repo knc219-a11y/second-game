@@ -30,3 +30,8 @@ polygon = PackedVector2Array(-10, -2, 8, -20, 11, -17, -7, 1)
 [node name="Hilt" type="Polygon2D" parent="Visual"]
 color = Color(1, 0.85, 0.2, 1)
 polygon = PackedVector2Array(-12, -8, -4, 0, -6, 2, -14, -6)
+
+[node name="Armor" type="Polygon2D" parent="Visual"]
+visible = false
+color = Color(0.7, 0.45, 0.25, 1)
+polygon = PackedVector2Array(-10, -18, -4, -20, 0, -16, 4, -20, 10, -18, 12, -10, 8, -10, 8, 0, -8, 0, -8, -10, -12, -10)
