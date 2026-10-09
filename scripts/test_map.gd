@@ -3,14 +3,15 @@ extends Node2D
 # Normal play is stage by stage (adventure): each stage places a fixed set of
 # enemies from STAGES. Killing them all clears the stage, an exit appears at
 # the right edge, and walking into it fades to the next stage on the same map.
-# The Player node stays, so gear, pet and HP carry over. After the last stage
-# the list repeats. R restart (after death) reloads the scene: back to stage 1.
+# The Player node stays, so gear, pet and HP carry over. The last stage's exit
+# leads into the special dungeon instead (endless_mode turned on, its own rocks
+# and floor). R restart (after death) reloads the scene: back to stage 1.
 #
 # Each stage also has its own rock layout (STAGE_ROCKS) and floor tint; moving
 # on clears drops left on the ground.
 #
-# endless_mode turns on the old test-map loop below instead (respawns + rising
-# pressure), kept for a later special dungeon.
+# endless_mode is the special dungeon: the old test-map loop below (respawns +
+# rising pressure) with no exit. Set from the start it skips the stages.
 @export var endless_mode: bool = false
 # Kinds: "normal", "tough", "ranged" (variants made by _make_tough/_make_ranged).
 # Positions sit inside the walls and clear of rocks; enemies wait there until
@@ -35,6 +36,11 @@ const STAGE_ROCKS := [
 	[[Vector2(650, 300), Vector2(60, 60)], [Vector2(950, 300), Vector2(60, 60)], [Vector2(650, 600), Vector2(60, 60)], [Vector2(950, 600), Vector2(60, 60)], [Vector2(1300, 250), Vector2(40, 260)], [Vector2(1300, 720), Vector2(40, 200)]],
 ]
 const STAGE_FLOOR_COLORS := [Color(0.18, 0.32, 0.2, 1), Color(0.3, 0.27, 0.18, 1), Color(0.2, 0.22, 0.3, 1)]
+# Special dungeon: an open arena with four pillars around the middle, away from
+# the edge spawn_points and the player_start, on a near-black stone floor (a
+# dark red one hid the tough enemies).
+const DUNGEON_ROCKS := [[Vector2(550, 280), Vector2(70, 70)], [Vector2(1050, 280), Vector2(70, 70)], [Vector2(550, 620), Vector2(70, 70)], [Vector2(1050, 620), Vector2(70, 70)]]
+const DUNGEON_FLOOR_COLOR := Color(0.13, 0.13, 0.14, 1)
 const ROCK_COLOR := Color(0.5, 0.45, 0.4, 1)
 const LOOT_SCRIPT := preload("res://scripts/loot.gd")
 @export var player_start: Vector2 = Vector2(200, 450)
@@ -186,7 +192,9 @@ func _on_enemy_exiting(enemy: Node) -> void:
 		return
 	kills += 1
 	if not endless_mode:
-		_update_kill_label()
+		# Kills in the same frame as the clear would overwrite its exit hint.
+		if not stage_cleared:
+			_update_kill_label()
 		# The dying enemy is already queued for deletion, so it isn't counted.
 		# Several dying in one frame all see 0: clear only once.
 		if _alive_enemies() == 0 and not stage_cleared:
@@ -206,7 +214,7 @@ func _on_enemy_exiting(enemy: Node) -> void:
 
 func _update_kill_label() -> void:
 	if endless_mode:
-		kill_label.text = "Kills: %d   Enemies at once: %d" % [kills, keep_alive]
+		kill_label.text = "Dungeon   Kills: %d   Enemies at once: %d" % [kills, keep_alive]
 	else:
 		kill_label.text = "Stage %d   Enemies left: %d" % [stage, _alive_enemies()]
 
@@ -215,19 +223,28 @@ func _clear_stage() -> void:
 	stage_cleared = true
 	print("Stage %d clear" % stage)
 	_show_banner("Stage %d Clear!" % stage)
-	kill_label.text = "Stage %d   Clear! Exit on the right ->" % stage
+	if _is_last_stage():
+		kill_label.text = "Stage %d   Clear! Dungeon on the right ->" % stage
+	else:
+		kill_label.text = "Stage %d   Clear! Exit on the right ->" % stage
 	exit_gate.position = exit_position
 	exit_gate.visible = true
 
 
+func _is_last_stage() -> bool:
+	return stage % STAGES.size() == 0
+
+
 # Fade out, put the Player (and pet) back at the start, bring in the next
-# stage's enemies and rocks, fade in. Drops left on the ground are cleared.
+# stage's enemies and rocks (or the dungeon after the last stage), fade in.
+# Drops left on the ground are cleared.
 func _move_on() -> void:
 	moving_on = true
 	exit_gate.visible = false
 	var tween := create_tween()
 	tween.tween_property(fade, "color:a", 1.0, fade_time)
 	await tween.finished
+	var to_dungeon := _is_last_stage()
 	stage += 1
 	for child in get_children():
 		if child.get_script() == LOOT_SCRIPT:
@@ -237,12 +254,27 @@ func _move_on() -> void:
 	if player.pet != null:
 		player.pet.position = player_start + Vector2(-player.pet.follow_offset.x, player.pet.follow_offset.y)
 	player.camera.reset_smoothing()
-	_spawn_stage()
+	if to_dungeon:
+		_enter_dungeon()
+	else:
+		_spawn_stage()
 	_update_kill_label()
 	tween = create_tween()
 	tween.tween_property(fade, "color:a", 0.0, fade_time)
 	await tween.finished
 	moving_on = false
+
+
+# Turns the endless loop on from a fresh count; the first enemy comes after
+# respawn_delay.
+func _enter_dungeon() -> void:
+	endless_mode = true
+	kills = 0
+	respawn_left = respawn_delay
+	_build_rocks(DUNGEON_ROCKS)
+	floor_poly.color = DUNGEON_FLOOR_COLOR
+	print("Dungeon")
+	_show_banner("Special Dungeon")
 
 
 func _physics_process(delta: float) -> void:
