@@ -13,7 +13,7 @@ polygon = PackedVector2Array(14, 0, 12.9, 1.9, 9.9, 3.5, 5.4, 4.6, 0, 5, -5.4, 4
 [node name="Visual" type="Node2D" parent="."]
 
 [node name="Body" type="Polygon2D" parent="Visual"]
-color = Color(0.6, 0.18, 0.28, 1)
+color = Color(0.96, 0.8, 0.62, 1)
 polygon = PackedVector2Array(-10, -22, -6, -28, -2, -22, 2, -22, 6, -28, 10, -22, 10, 0, -10, 0)
 
 [node name="Eye" type="Polygon2D" parent="Visual"]

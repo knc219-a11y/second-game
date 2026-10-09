@@ -44,13 +44,20 @@ const STAGE_ROCKS := [
 	# Four pillars around the tough enemy; a split wall guards the exit side.
 	[[Vector2(650, 300), Vector2(60, 60)], [Vector2(950, 300), Vector2(60, 60)], [Vector2(650, 600), Vector2(60, 60)], [Vector2(950, 600), Vector2(60, 60)], [Vector2(1300, 250), Vector2(40, 260)], [Vector2(1300, 720), Vector2(40, 200)]],
 ]
-const STAGE_FLOOR_COLORS := [Color(0.18, 0.32, 0.2, 1), Color(0.3, 0.27, 0.18, 1), Color(0.2, 0.22, 0.3, 1)]
+# Placeholder lineage colors per stage: 1 dried pinkish skin (apart from the
+# town's ochre) with callus-yellow rocks, 2 dark marrow ground with dull bone
+# rocks (dimmer than the bone tough enemy), 3 dark clotted red with raw-flesh
+# rocks. Kept dark so the red normal, bone tough and violet ranged
+# enemies, the pet and the drops stay readable on top.
+const STAGE_FLOOR_COLORS := [Color(0.4, 0.3, 0.29, 1), Color(0.2, 0.19, 0.18, 1), Color(0.22, 0.1, 0.11, 1)]
+const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
-# the edge spawn_points and the player_start, on a near-black stone floor (a
-# dark red one hid the tough enemies).
+# the edge spawn_points and the player_start, on a near-black floor with a red
+# tinge (an open wound; a bright red floor once hid the tough enemies, which
+# are now bone-colored).
 const DUNGEON_ROCKS := [[Vector2(550, 280), Vector2(70, 70)], [Vector2(1050, 280), Vector2(70, 70)], [Vector2(550, 620), Vector2(70, 70)], [Vector2(1050, 620), Vector2(70, 70)]]
-const DUNGEON_FLOOR_COLOR := Color(0.13, 0.13, 0.14, 1)
-const ROCK_COLOR := Color(0.5, 0.45, 0.4, 1)
+const DUNGEON_FLOOR_COLOR := Color(0.12, 0.08, 0.09, 1)
+const DUNGEON_ROCK_COLOR := Color(0.55, 0.12, 0.16, 1)
 const LOOT_SCRIPT := preload("res://scripts/loot.gd")
 const CHEST_SCRIPT := preload("res://scripts/chest.gd")
 const SHOT_SCRIPT := preload("res://scripts/projectile.gd")
@@ -118,7 +125,7 @@ var moving_on: bool = false
 @export var pressure_flash_time: float = 1.0
 
 # Tough variant: this fraction of respawns has more HP, a better drop chance, drops
-# the Bone Blade (tier 2) instead of the Callus Blade, and super armor (keeps swinging when hit), drawn bigger and darker to read at a glance.
+# the Bone Blade (tier 2) instead of the Callus Blade, and super armor (keeps swinging when hit), drawn bigger and bone-colored (bone lineage) to read at a glance.
 @export var tough_chance: float = 0.3
 @export var tough_hp: int = 100
 @export var tough_drop_chance: float = 0.7
@@ -128,7 +135,7 @@ var moving_on: bool = false
 @export var tough_pet_drop_chance: float = 0.08
 @export var tough_pet_drop_kind: int = 1
 @export var tough_body_scale: float = 1.25
-@export var tough_color: Color = Color(0.45, 0.12, 0.2, 1)
+@export var tough_color: Color = Color(0.8, 0.74, 0.6, 1)
 # Ranged variant (enemy.gd is_ranged): this further fraction of respawns keeps
 # its distance and shoots; low HP, slower, drawn smaller and violet.
 @export var ranged_chance: float = 0.2
@@ -219,7 +226,7 @@ func _enter_hub() -> void:
 func _spawn_stage() -> void:
 	stage_cleared = false
 	player.hits_taken = 0
-	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()])
+	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()], STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
 		var enemy := enemy_scene.instantiate()
@@ -234,7 +241,7 @@ func _spawn_stage() -> void:
 
 
 # Replaces every Rock* under Obstacles (walls stay) with the given boxes.
-func _build_rocks(boxes: Array) -> void:
+func _build_rocks(boxes: Array, color: Color = Color.WHITE) -> void:
 	for child in obstacles.get_children():
 		if child.name.begins_with("Rock"):
 			obstacles.remove_child(child)
@@ -253,7 +260,7 @@ func _build_rocks(boxes: Array) -> void:
 		rock.add_child(col)
 		var visual := Polygon2D.new()
 		visual.name = "Visual"
-		visual.color = ROCK_COLOR
+		visual.color = color
 		visual.polygon = PackedVector2Array([Vector2(-half.x, -half.y), Vector2(half.x, -half.y), half, Vector2(-half.x, half.y)])
 		rock.add_child(visual)
 		obstacles.add_child(rock)
@@ -442,7 +449,7 @@ func _enter_dungeon() -> void:
 	endless_mode = true
 	kills = 0
 	respawn_left = respawn_delay
-	_build_rocks(DUNGEON_ROCKS)
+	_build_rocks(DUNGEON_ROCKS, DUNGEON_ROCK_COLOR)
 	floor_poly.color = DUNGEON_FLOOR_COLOR
 	print("Dungeon")
 	_show_banner(DUNGEON_NAME)
