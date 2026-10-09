@@ -1,11 +1,14 @@
 extends Node2D
 
-# Normal play is stage by stage (adventure): each stage places a fixed set of
-# enemies from STAGES. Killing them all clears the stage, an exit appears at
-# the right edge, and walking into it fades to the next stage on the same map.
-# The Player node stays, so gear, pet and HP carry over. The last stage's exit
-# leads into the special dungeon instead (endless_mode turned on, its own rocks
-# and floor). R restart (after death) reloads the scene: back to stage 1, gear and pet kept (player.gd SAVE_PATH).
+# The game starts in the hub town (no enemies). Its gates lead into stages
+# 1-3 and, once stage 3 is cleared, the special dungeon; each stage gate shows
+# that stage's best grade, and locked gates are greyed out. Normal play is
+# stage by stage (adventure): each stage places a fixed set of enemies from
+# STAGES. Killing them all clears the stage (unlocking the next one in the save
+# file), an exit appears at the right edge, and walking into it fades back to
+# town, all on the same map. The Player node stays, so gear, pet and HP carry
+# over. R restart (after death) reloads the scene: back to town, gear, pet,
+# grades and unlocks kept (player.gd SAVE_PATH).
 #
 # Each stage also has its own rock layout (STAGE_ROCKS) and floor tint; moving
 # on clears drops left on the ground.
@@ -51,6 +54,16 @@ const CHEST_SCRIPT := preload("res://scripts/chest.gd")
 @export var fade_time: float = 0.3
 
 var stage: int = 1
+# Hub town: gate positions for stage 1..STAGES.size(), then the dungeon. The
+# highest unlocked stage is saved (section "progress", key "unlocked");
+# unlocked = STAGES.size() + 1 opens the dungeon gate.
+const HUB_GATES := [Vector2(600, 540), Vector2(850, 540), Vector2(1100, 540), Vector2(1350, 540)]
+const HUB_FLOOR_COLOR := Color(0.33, 0.3, 0.25, 1)
+const LOCKED_GATE_COLOR := Color(0.55, 0.55, 0.55, 0.6)
+const DUNGEON_GATE_COLOR := Color(1, 0.35, 0.3, 0.8)
+var in_hub: bool = false
+var hub_gates: Array = []
+var unlocked: int = 1
 # Stage grade from hits taken (player.gd hits_taken) during the stage: S up to
 # grade_s_hits, A up to grade_a_hits, else B. Shown on the clear banner; the
 # best grade per stage is kept in the save file (player.gd SAVE_PATH, section
@@ -140,9 +153,57 @@ func _ready() -> void:
 		for e in enemies.get_children():
 			enemies.remove_child(e)
 			e.free()
-		_spawn_stage()
+		_build_hub_gates()
+		_enter_hub()
 	enemies.child_exiting_tree.connect(_on_enemy_exiting)
 	_update_kill_label()
+
+
+# The town gates are copies of the exit gate, kept under the Player in draw order.
+func _build_hub_gates() -> void:
+	for i in HUB_GATES.size():
+		var gate := exit_gate.duplicate() as Node2D
+		gate.name = "HubGate%d" % (i + 1)
+		gate.position = HUB_GATES[i]
+		var label := gate.get_node("Label") as Label
+		label.offset_left = -60.0
+		label.offset_right = 60.0
+		label.offset_top = -126.0
+		add_child(gate)
+		move_child(gate, player.get_index())
+		hub_gates.append(gate)
+
+
+func _enter_hub() -> void:
+	in_hub = true
+	stage_cleared = false
+	exit_gate.visible = false
+	_build_rocks([])
+	floor_poly.color = HUB_FLOOR_COLOR
+	var cfg := ConfigFile.new()
+	cfg.load(player.SAVE_PATH)
+	unlocked = cfg.get_value("progress", "unlocked", 1)
+	for i in hub_gates.size():
+		var gate: Node2D = hub_gates[i]
+		var label := gate.get_node("Label") as Label
+		var open := i + 1 <= unlocked
+		gate.visible = true
+		gate.modulate = Color(1, 1, 1, 1) if open else LOCKED_GATE_COLOR
+		label.modulate = Color(1, 1, 1, 1)
+		if i >= STAGES.size():
+			(gate.get_node("Door") as Polygon2D).color = DUNGEON_GATE_COLOR
+			label.text = "Dungeon" if open else "Dungeon\nLocked"
+			continue
+		var best: String = cfg.get_value("grades", "stage_%d" % (i + 1), "")
+		if not open:
+			label.text = "Stage %d\nLocked" % (i + 1)
+		elif best == "":
+			label.text = "Stage %d\nNew" % (i + 1)
+		else:
+			label.text = "Stage %d\nBest %s" % [i + 1, best]
+			label.modulate = GRADE_COLORS[best]
+	print("Town: unlocked %d" % unlocked)
+	_show_banner("Town")
 
 
 func _spawn_stage() -> void:
@@ -232,7 +293,9 @@ func _on_enemy_exiting(enemy: Node) -> void:
 
 
 func _update_kill_label() -> void:
-	if endless_mode:
+	if in_hub:
+		kill_label.text = "Town   Walk into a gate to start"
+	elif endless_mode:
 		kill_label.text = "Dungeon   Kills: %d   Enemies at once: %d" % [kills, keep_alive]
 	else:
 		kill_label.text = "Stage %d   Enemies left: %d" % [stage, _alive_enemies()]
@@ -243,12 +306,10 @@ func _clear_stage() -> void:
 	var hits: int = player.hits_taken
 	var grade := "S" if hits <= grade_s_hits else ("A" if hits <= grade_a_hits else "B")
 	var best := _save_best_grade(grade)
+	_save_unlock(stage + 1)
 	print("Stage %d clear: grade %s (%d hits), best %s" % [stage, grade, hits, best])
 	_show_banner("Stage %d Clear!\nGrade %s  (%d hits)   Best %s" % [stage, grade, hits, best], GRADE_COLORS[grade], clear_banner_time)
-	if _is_last_stage():
-		kill_label.text = "Stage %d   Clear! Dungeon on the right ->" % stage
-	else:
-		kill_label.text = "Stage %d   Clear! Exit on the right ->" % stage
+	kill_label.text = "Stage %d   Clear! Back to town on the right ->" % stage
 	exit_gate.position = exit_position
 	exit_gate.visible = true
 	_spawn_chests(grade)
@@ -303,21 +364,24 @@ func _save_best_grade(grade: String) -> String:
 	return best
 
 
-func _is_last_stage() -> bool:
-	return stage % STAGES.size() == 0
+# Opens stages up to n (n = STAGES.size() + 1 opens the dungeon) in the save file.
+func _save_unlock(n: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(player.SAVE_PATH)
+	if n > cfg.get_value("progress", "unlocked", 1):
+		cfg.set_value("progress", "unlocked", n)
+		cfg.save(player.SAVE_PATH)
 
 
-# Fade out, put the Player (and pet) back at the start, bring in the next
-# stage's enemies and rocks (or the dungeon after the last stage), fade in.
+# Fade out, put the Player (and pet) back at the start, bring in the target
+# (0 = town, 1..STAGES.size() = that stage, above = the dungeon), fade in.
 # Drops and chests left on the ground are cleared.
-func _move_on() -> void:
+func _move_on(target: int) -> void:
 	moving_on = true
 	exit_gate.visible = false
 	var tween := create_tween()
 	tween.tween_property(fade, "color:a", 1.0, fade_time)
 	await tween.finished
-	var to_dungeon := _is_last_stage()
-	stage += 1
 	for child in get_children():
 		if child.get_script() == LOOT_SCRIPT or child.get_script() == CHEST_SCRIPT:
 			child.queue_free()
@@ -326,9 +390,15 @@ func _move_on() -> void:
 	if player.pet != null:
 		player.pet.position = player_start + Vector2(-player.pet.follow_offset.x, player.pet.follow_offset.y)
 	player.camera.reset_smoothing()
-	if to_dungeon:
+	in_hub = false
+	for gate in hub_gates:
+		gate.visible = false
+	if target == 0:
+		_enter_hub()
+	elif target > STAGES.size():
 		_enter_dungeon()
 	else:
+		stage = target
 		_spawn_stage()
 	_update_kill_label()
 	tween = create_tween()
@@ -353,8 +423,15 @@ func _physics_process(delta: float) -> void:
 	if player.get("is_dead") == true:
 		return
 	if not endless_mode:
-		if stage_cleared and not moving_on and player.position.distance_to(exit_position) <= exit_radius:
-			_move_on()
+		if moving_on:
+			return
+		if in_hub:
+			for i in hub_gates.size():
+				if i + 1 <= unlocked and player.position.distance_to(hub_gates[i].position) <= exit_radius:
+					_move_on(i + 1)
+					return
+		elif stage_cleared and player.position.distance_to(exit_position) <= exit_radius:
+			_move_on(0)
 		return
 	var alive := _alive_enemies()
 	if alive >= keep_alive:
