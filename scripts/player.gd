@@ -119,7 +119,7 @@ extends CharacterBody2D
 # The Pup is rose, not the normal enemy's red, so it doesn't read as an enemy.
 # One pet at a time: walking over a different pet swaps to it. Kept across R (SAVE_PATH).
 @export var pet_names: Array[String] = ["Marrow Cub", "Scab Pup", "Clot Imp"]
-@export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(1, 0.6, 0.72, 1), Color(0.75, 0.62, 1, 1)]
+@export var pet_colors: Array[Color] = [Color(0.96, 0.8, 0.62, 1), Color(1, 0.6, 0.72, 1), Color(0.75, 0.62, 1, 1)]
 @export var pet_bite_damage: Array[int] = [5, 2, 4]
 @export var pet_bite_cooldown: Array[float] = [2.5, 0.9, 2.0]
 # Size the pet swells to on a bite (pet.gd bite_pop).
