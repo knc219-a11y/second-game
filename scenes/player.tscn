@@ -26,6 +26,11 @@ position = Vector2(0, -28)
 color = Color(1, 0.8, 0.25, 0.75)
 polygon = PackedVector2Array(40, 0, 23, 11, 25, 31, 6, 25, -9, 39, -16, 20, -36, 17, -26, 0, -36, -17, -16, -20, -9, -39, 6, -25, 25, -31, 23, -11)
 
+[node name="DashTrail" type="Polygon2D" parent="."]
+visible = false
+color = Color(0.75, 0.95, 1, 0.6)
+polygon = PackedVector2Array(10, -50, -40, -44, -130, -30, -40, -14, 10, -8)
+
 [node name="Visual" type="Node2D" parent="."]
 
 [node name="Body" type="Polygon2D" parent="Visual"]
@@ -142,6 +147,16 @@ theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Pet: none"
+
+[node name="SkillLabel" type="Label" parent="Hud"]
+offset_left = 16.0
+offset_top = 152.0
+offset_right = 416.0
+offset_bottom = 180.0
+theme_override_constants/outline_size = 6
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "Q Dash Slash: ready"
 
 [node name="HitSound" type="AudioStreamPlayer" parent="."]
 volume_db = -10.0
