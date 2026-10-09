@@ -2,8 +2,8 @@ extends Area2D
 
 # Ranged enemy's shot (enemy.gd is_ranged): flies straight left/right along the
 # line it was fired on and hurts the Player once on touch. A rolling Player
-# (invincible) lets it fly through; walls and rocks stop it; it vanishes after
-# lifetime s. Values are set by the enemy that fires it.
+# (invincible) lets it fly through; walls and rocks stop it (with a splash); it
+# vanishes after lifetime s. Values are set by the enemy that fires it.
 # The Spit Imp pet (pet.gd) fires it too, with hits_enemies on: it flies along
 # aim instead, hurts the first enemy it touches (small side damage, no push)
 # and passes the Player. On that hit it leaves a small splash (a ring in
@@ -52,9 +52,15 @@ func _physics_process(delta: float) -> void:
 			_splash()
 			queue_free()
 			return
+	# Walls and rocks (world layer) stop it, with the same splash. Enemy bodies
+	# are on their own layer (enemy_body), outside both masks, so neither the
+	# shooter's body nor a pet shot's target body blocks it. The root must stay
+	# monitorable: a non-monitorable Area2D is treated as static by the physics
+	# server and never pairs with StaticBody2D walls.
 	for body in get_overlapping_bodies():
 		# The Player's own body is on the world layer too; only its hurtbox counts.
 		if not body.is_in_group("player"):
+			_splash()
 			queue_free()
 			return
 
