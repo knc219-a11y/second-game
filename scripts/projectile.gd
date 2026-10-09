@@ -6,13 +6,17 @@ extends Area2D
 # lifetime s. Values are set by the enemy that fires it.
 # The Spit Imp pet (pet.gd) fires it too, with hits_enemies on: it flies along
 # aim instead, hurts the first enemy it touches (small side damage, no push)
-# and passes the Player.
+# and passes the Player. On that hit it leaves a small splash (a ring in
+# splash_color that swells and fades over splash_time).
 var hits_enemies: bool = false
 var aim: Vector2 = Vector2.ZERO
 var direction: int = 1
 var speed: float = 150.0
 var damage: int = 8
 var lifetime: float = 2.8
+var splash_color: Color = Color(0.45, 1, 0.4, 0.75)
+var splash_time: float = 0.25
+var splash_size: float = 3.0
 
 
 func _ready() -> void:
@@ -38,6 +42,7 @@ func _physics_process(delta: float) -> void:
 			continue
 		if hits_enemies:
 			target.take_damage(damage, 0, 1.0, 2)
+			_splash()
 			queue_free()
 			return
 		if target.has_method("take_damage"):
@@ -49,3 +54,19 @@ func _physics_process(delta: float) -> void:
 		if not body.is_in_group("player"):
 			queue_free()
 			return
+
+
+# Its tween follows time_scale, so it holds still during hitstop.
+func _splash() -> void:
+	var ring := Polygon2D.new()
+	ring.polygon = $Glow.polygon
+	ring.color = splash_color
+	ring.z_index = z_index
+	ring.global_position = $Glow.global_position
+	ring.scale = scale * 0.8
+	get_parent().add_child(ring)
+	var tween := ring.create_tween()
+	tween.tween_property(ring, "scale", scale * splash_size, splash_time) \
+			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tween.parallel().tween_property(ring, "modulate:a", 0.0, splash_time)
+	tween.tween_callback(ring.queue_free)
