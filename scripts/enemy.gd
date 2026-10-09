@@ -51,6 +51,9 @@ extends CharacterBody2D
 # Brute Cub (1) and its own chance. No drop while the Player has that same pet.
 @export var pet_drop_chance: float = 0.04
 @export var pet_drop_kind: int = 2
+# Separate roll for a heal orb (player.gd heal_amount), only while the Player
+# is hurt.
+@export var heal_drop_chance: float = 0.15
 @export var loot_scene: PackedScene = preload("res://scenes/loot.tscn")
 # Hits during its own attack neither push it nor cancel the swing (the tough
 # variant), so the Player can't just mash through its wind-up and must dodge.
@@ -284,6 +287,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 		_try_drop_loot()
 		_try_drop_armor()
 		_try_drop_pet()
+		_try_drop_heal()
 		queue_free()
 		return
 
@@ -350,3 +354,18 @@ func _try_drop_pet() -> void:
 	parent.add_child.call_deferred(loot)
 	parent.move_child.call_deferred(loot, player.get_index())
 	print("%s dropped pet kind %d" % [name, pet_drop_kind])
+
+
+func _try_drop_heal() -> void:
+	if not is_instance_valid(player) or player.is_dead or player.hp >= player.max_hp:
+		return
+	if randf() >= heal_drop_chance:
+		return
+	var loot := loot_scene.instantiate()
+	# Beside the other drops so all of them stay visible together.
+	loot.position = global_position + Vector2(28, 0)
+	loot.is_heal = true
+	var parent := player.get_parent()
+	parent.add_child.call_deferred(loot)
+	parent.move_child.call_deferred(loot, player.get_index())
+	print("%s dropped a heal orb" % name)
