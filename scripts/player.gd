@@ -385,9 +385,9 @@ func equip_pet() -> void:
 	pet = pet_scene.instantiate()
 	pet.player = self
 	pet.position = position + Vector2(-facing * pet.follow_offset.x, pet.follow_offset.y)
-	# Beside the Player in the scene, drawn just below it.
+	# Beside the Player in the scene; pet.tscn's z_index draws it on top so the
+	# bite dash is not hidden behind the Player or the enemy it bites.
 	get_parent().add_child(pet)
-	get_parent().move_child(pet, get_index())
 	print("Picked up pet %s" % pet_name)
 	pet_label.text = "Pet: %s (no push while attacking, bites %d)" % [pet_name, pet.bite_damage]
 
