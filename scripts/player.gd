@@ -456,7 +456,7 @@ func _dash_hits() -> void:
 			continue
 		dash_hit_targets.append(target)
 		print("Dash Slash hit %s" % target.name)
-		target.take_damage(dash_damage, dash_dir)
+		target.take_damage(dash_damage, dash_dir, 1.0, 1)
 		landed = true
 	# One hitstop per frame, like the combo.
 	if landed:
@@ -498,7 +498,7 @@ func _roll_graze() -> void:
 		# Spark between the two hurtbox centers, i.e. where they rub.
 		var enemy_center: Vector2 = hit.collider.get_node("CollisionShape2D").global_position
 		_spawn_graze_spark((hurt_shape.global_position + enemy_center) / 2.0)
-		target.take_damage(ring_roll_damage, 0)
+		target.take_damage(ring_roll_damage, 0, 1.0, 2)
 
 
 # One-off star burst in the world (not on the enemy, which may die from the graze).
@@ -598,7 +598,8 @@ func _apply_hits() -> void:
 			continue
 		hit_targets.append(target)
 		# Knock back along the facing locked at attack start, not the current facing.
-		target.take_damage(_hit_damage(), int(attack_pivot.scale.x), combo_knockback_scale[combo_index])
+		var finisher := combo_index == combo_damage.size() - 1
+		target.take_damage(_hit_damage(), int(attack_pivot.scale.x), combo_knockback_scale[combo_index], 1 if finisher else 0)
 		landed = true
 	# One hitstop per frame no matter how many enemies were hit together.
 	if landed:
@@ -639,7 +640,7 @@ func _release_shockwave() -> void:
 		if offset.length() > _shockwave_radius():
 			continue
 		var dir := facing if is_zero_approx(offset.x) else int(signf(offset.x))
-		enemy.take_damage(full_set_damage if has_full_set() else shockwave_damage, dir, shockwave_knockback_scale)
+		enemy.take_damage(full_set_damage if has_full_set() else shockwave_damage, dir, shockwave_knockback_scale, 1)
 		count += 1
 	print("Set shockwave hit %d enemies" % count)
 
