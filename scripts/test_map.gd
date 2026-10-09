@@ -73,6 +73,13 @@ var stage: int = 1
 # unlocked = STAGES.size() + 1 opens the dungeon gate.
 const HUB_GATES := [Vector2(600, 540), Vector2(850, 540), Vector2(1100, 540), Vector2(1350, 540)]
 const HUB_FLOOR_COLOR := Color(0.33, 0.3, 0.25, 1)
+# Stage 1 floor is painted with s1_ground.png tiles (atlas row 0: 4 base, 2
+# cracked, 2 red vein). Fixed seed so the floor looks the same every visit;
+# other stages, town and dungeon keep the flat colour floor and grid.
+const GROUND_SIZE := Vector2i(25, 15)
+const GROUND_SEED := 1
+@export var ground_crack_chance: float = 0.08
+@export var ground_vein_chance: float = 0.04
 const LOCKED_GATE_COLOR := Color(0.55, 0.55, 0.55, 0.6)
 const DUNGEON_GATE_COLOR := Color(1, 0.35, 0.3, 0.8)
 var in_hub: bool = false
@@ -160,6 +167,8 @@ var kills: int = 0
 @onready var exit_gate: Node2D = $ExitGate
 @onready var obstacles: Node2D = $Obstacles
 @onready var floor_poly: Polygon2D = $Floor
+@onready var ground: TileMapLayer = $Ground
+@onready var grid: Node2D = $Grid
 
 
 func _ready() -> void:
@@ -197,6 +206,7 @@ func _enter_hub() -> void:
 	exit_gate.visible = false
 	_build_rocks([])
 	floor_poly.color = HUB_FLOOR_COLOR
+	_show_ground(false)
 	var cfg := ConfigFile.new()
 	cfg.load(player.SAVE_PATH)
 	unlocked = cfg.get_value("progress", "unlocked", 1)
@@ -228,6 +238,7 @@ func _spawn_stage() -> void:
 	player.hits_taken = 0
 	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()], STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
+	_show_ground(stage == 1)
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
 		var enemy := enemy_scene.instantiate()
 		enemy.position = entry[1]
@@ -238,6 +249,25 @@ func _spawn_stage() -> void:
 		enemies.add_child(enemy)
 	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
 	_show_banner("Stage %d  %s" % [stage, _stage_name()])
+
+
+# Tiled floor on, grid off (or the other way round). Fills the layer once.
+func _show_ground(on: bool) -> void:
+	ground.visible = on
+	grid.visible = not on
+	if not on or ground.get_used_cells().size() > 0:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GROUND_SEED
+	for y in GROUND_SIZE.y:
+		for x in GROUND_SIZE.x:
+			var roll := rng.randf()
+			var tile := rng.randi_range(0, 3)
+			if roll < ground_vein_chance:
+				tile = 6 + rng.randi_range(0, 1)
+			elif roll < ground_vein_chance + ground_crack_chance:
+				tile = 4 + rng.randi_range(0, 1)
+			ground.set_cell(Vector2i(x, y), 0, Vector2i(tile, 0))
 
 
 # Replaces every Rock* under Obstacles (walls stay) with the given boxes.
@@ -451,6 +481,7 @@ func _enter_dungeon() -> void:
 	respawn_left = respawn_delay
 	_build_rocks(DUNGEON_ROCKS, DUNGEON_ROCK_COLOR)
 	floor_poly.color = DUNGEON_FLOOR_COLOR
+	_show_ground(false)
 	print("Dungeon")
 	_show_banner(DUNGEON_NAME)
 

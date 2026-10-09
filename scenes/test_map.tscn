@@ -1,9 +1,10 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1"]
 [ext_resource type="Script" path="res://scripts/test_map.gd" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="2"]
 [ext_resource type="Script" path="res://scripts/pause_menu.gd" id="4"]
+[ext_resource type="TileSet" path="res://tilesets/stage1_terrain.tres" id="5"]
 
 [sub_resource type="RectangleShape2D" id="Shape_WallTop"]
 size = Vector2(1680, 40)
@@ -35,6 +36,10 @@ script = ExtResource("3")
 [node name="Floor" type="Polygon2D" parent="."]
 color = Color(0.18, 0.32, 0.2, 1)
 polygon = PackedVector2Array(0, 0, 1600, 0, 1600, 900, 0, 900)
+
+[node name="Ground" type="TileMapLayer" parent="."]
+visible = false
+tile_set = ExtResource("5")
 
 [node name="Grid" type="Node2D" parent="."]
 
