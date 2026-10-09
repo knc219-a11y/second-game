@@ -247,3 +247,15 @@ position = Vector2(290, 660)
 
 [node name="Enemy3" parent="Enemies" instance=ExtResource("2")]
 position = Vector2(750, 450)
+
+[node name="Hud" type="CanvasLayer" parent="."]
+
+[node name="KillLabel" type="Label" parent="Hud"]
+offset_left = 16.0
+offset_top = 180.0
+offset_right = 616.0
+offset_bottom = 208.0
+theme_override_constants/outline_size = 6
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "Kills: 0   Enemies at once: 3"
