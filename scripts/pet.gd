@@ -29,7 +29,12 @@ extends Node2D
 @export var spit_range: float = 260.0
 @export var spit_speed: float = 320.0
 @export var spit_travel: float = 320.0
-@export var spit_color: Color = Color(0.75, 0.62, 1, 0.6)
+# Ally green (like the AllyMark) so it never reads as the ranged enemy's violet
+# shot. Only the look grows (spit_visual_scale on Glow/Core/Shadow); the hit
+# shape stays at the old 0.7 size so hits land exactly as before.
+@export var spit_color: Color = Color(0.45, 1, 0.4, 0.75)
+@export var spit_core_color: Color = Color(0.92, 1, 0.85, 1)
+@export var spit_visual_scale: float = 2.0
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 
 var player: Node2D
@@ -135,7 +140,11 @@ func _spit(target: Node2D) -> void:
 	shot.damage = bite_damage
 	shot.lifetime = spit_travel / spit_speed
 	shot.get_node("Glow").color = spit_color
+	shot.get_node("Core").color = spit_core_color
+	shot.splash_color = spit_color
 	shot.scale = Vector2(0.7, 0.7)
+	for part in ["Glow", "Core", "Shadow"]:
+		shot.get_node(part).scale = Vector2(spit_visual_scale, spit_visual_scale)
 	get_parent().add_child(shot)
 	body.color = bite_color
 	flash_left = flash_duration
