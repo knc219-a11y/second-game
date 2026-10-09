@@ -24,8 +24,10 @@ extends Node2D
 @export var tough_hp: int = 100
 @export var tough_drop_chance: float = 0.7
 @export var tough_drop_tier: int = 2
-# Rare pet drop (player.gd pet_name), tough enemies only.
+# Tough enemies rarely drop the Brute Cub (player.gd pet kind 1) instead of
+# the normal enemies' Red Pup.
 @export var tough_pet_drop_chance: float = 0.08
+@export var tough_pet_drop_kind: int = 1
 @export var tough_body_scale: float = 1.25
 @export var tough_color: Color = Color(0.45, 0.12, 0.2, 1)
 
@@ -76,6 +78,7 @@ func _make_tough(enemy: Node) -> void:
 	enemy.drop_chance = tough_drop_chance
 	enemy.drop_tier = tough_drop_tier
 	enemy.pet_drop_chance = tough_pet_drop_chance
+	enemy.pet_drop_kind = tough_pet_drop_kind
 	enemy.super_armor = true
 	var body := enemy.get_node("Body") as Polygon2D
 	body.color = tough_color

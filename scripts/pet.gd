@@ -1,8 +1,9 @@
 extends Node2D
 
-# Placeholder pet: a small copy of the tough enemy that trails behind the Player
-# (on the side away from facing). The passive lives in player.gd take_damage;
-# the pet flashes when it blocks a push. It also helps a little in a fight:
+# Placeholder pet: a small copy of the enemy that dropped it (player.gd
+# pet_colors tints it) that trails behind the Player
+# (on the side away from facing). The passives live in player.gd take_damage;
+# the Brute Cub flashes when it blocks a push. It also helps a little in a fight:
 # every bite_cooldown s it dashes at the nearest enemy within bite_range of the
 # Player and bites for bite_damage. The bite never pushes the enemy or cancels
 # its swing, so it only chips (about 2 damage a second next to the Player's ~30).
@@ -56,6 +57,13 @@ func _physics_process(delta: float) -> void:
 func flash() -> void:
 	body.color = flash_color
 	flash_left = flash_duration
+
+
+# Red Pup passive (player.gd): skip the wait and bite now if an enemy is in
+# range. Does nothing mid-dash.
+func bite_now() -> void:
+	if lunge_left <= 0.0:
+		_try_bite()
 
 
 func _try_bite() -> void:
