@@ -3,7 +3,7 @@ extends Node2D
 # Placeholder pet: a small copy of the enemy that dropped it (player.gd
 # pet_colors tints it) that trails behind the Player
 # (on the side away from facing). The passives live in player.gd take_damage;
-# the Brute Cub flashes when it blocks a push. It also helps a little in a fight:
+# the Marrow Cub flashes when it blocks a push. It also helps a little in a fight:
 # every bite_cooldown s it dashes at the nearest enemy within bite_range of the
 # Player and bites for bite_damage (player.gd sets damage, cooldown and pop per
 # pet). The bite never pushes the enemy or cancels its swing, so it only chips
@@ -23,7 +23,7 @@ extends Node2D
 @export var bite_color: Color = Color(1, 1, 1, 1)
 # On a bite the pet swells to this size and shrinks back over flash_duration.
 @export var bite_pop: float = 1.0
-# Spit Imp (player.gd pet kind 3): no dash; it spits a small shot from where it
+# Clot Imp (player.gd pet kind 3): no dash; it spits a small shot from where it
 # stands at the nearest enemy within spit_range of the Player instead.
 @export var spits: bool = false
 @export var spit_range: float = 260.0
@@ -82,7 +82,7 @@ func flash() -> void:
 	flash_left = flash_duration
 
 
-# Red Pup passive (player.gd): skip the wait and bite now if an enemy is in
+# Scab Pup passive (player.gd): skip the wait and bite now if an enemy is in
 # range. Does nothing mid-dash.
 func bite_now() -> void:
 	if lunge_left <= 0.0:

@@ -9,7 +9,7 @@ extends Area2D
 @export var is_armor: bool = false
 # Pet drop instead (rare): shows the Pet shape, tinted by the dropping enemy.
 @export var is_pet: bool = false
-# Heal orb instead: restores some Player HP; left on the ground at full HP.
+# Ichor drop (heal) instead: restores some Player HP; left on the ground at full HP.
 @export var is_heal: bool = false
 # Ring drop instead: shows the Ring shape.
 @export var is_ring: bool = false
@@ -28,7 +28,7 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	# A heal orb left at full HP: the Player standing on it gets no new
+	# An ichor drop left at full HP: the Player standing on it gets no new
 	# area_entered, so retry while overlapping (it heals once hurt).
 	if is_heal:
 		for area in get_overlapping_areas():

@@ -4,7 +4,7 @@ extends Area2D
 # line it was fired on and hurts the Player once on touch. A rolling Player
 # (invincible) lets it fly through; walls and rocks stop it (with a splash); it
 # vanishes after lifetime s. Values are set by the enemy that fires it.
-# The Spit Imp pet (pet.gd) fires it too, with hits_enemies on: it flies along
+# The Clot Imp pet (pet.gd) fires it too, with hits_enemies on: it flies along
 # aim instead, hurts the first enemy it touches (small side damage, no push)
 # and passes the Player. On that hit it leaves a small splash (a ring in
 # splash_color that swells and fades over splash_time).
