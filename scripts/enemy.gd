@@ -81,6 +81,23 @@ extends CharacterBody2D
 @export var damage_number_colors: PackedColorArray = PackedColorArray([
 	Color(1, 1, 1, 1), Color(1, 0.85, 0.2, 1), Color(0.65, 0.9, 1, 1),
 ])
+# Ranged variant (test_map.gd mixes it into respawns): instead of closing in, it
+# keeps keep_distance px to the Player's side on the same line, winds up for
+# shot_startup s (aim line shown, its own warning ping) and fires one slow
+# projectile left/right that a roll passes through or a step off the line dodges.
+# Never counters; a hit during the wind-up still cancels the shot.
+@export var is_ranged: bool = false
+@export var keep_distance: float = 200.0
+# Fires only while on the Player's line between these horizontal distances.
+@export var shot_min_distance: float = 120.0
+@export var shot_range: float = 280.0
+@export var shot_startup: float = 0.55
+@export var shot_cooldown: float = 2.2
+@export var shot_speed: float = 150.0
+@export var shot_damage: int = 8
+# How far (px) the shot flies before it vanishes.
+@export var shot_travel: float = 420.0
+@export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -112,6 +129,8 @@ var is_counter: bool = false
 @onready var attack_arc: Polygon2D = $AttackPivot/AttackArc
 # Placeholder danger zone matching the Hitbox; visible only during STARTUP.
 @onready var warn_zone: Polygon2D = $AttackPivot/WarnZone
+# Ranged variant's wind-up: the lane its shot will fly along.
+@onready var aim_line: Polygon2D = $AttackPivot/AimLine
 @onready var body: Polygon2D = $Body
 @onready var base_color: Color = body.color
 
@@ -161,6 +180,9 @@ func _chase(delta: float) -> void:
 
 	if not is_chasing or delta <= 0.0:
 		return
+	if is_ranged:
+		_keep_range(to_player, delta)
+		return
 
 	# Default to the side we're already on; directly above/below keeps the last side.
 	var dx := global_position.x - player.global_position.x
@@ -204,13 +226,29 @@ func _chase(delta: float) -> void:
 	move_and_slide()
 
 
+# Ranged variant: hold keep_distance px to the Player's current side on its line
+# (backing off when the Player closes in) and shoot when lined up and ready.
+func _keep_range(to_player: Vector2, delta: float) -> void:
+	var dx := global_position.x - player.global_position.x
+	if dx != 0.0:
+		side = 1 if dx > 0.0 else -1
+	var on_line := absf(to_player.y) <= vertical_tolerance
+	if on_line and absf(dx) >= shot_min_distance and absf(dx) <= shot_range and cooldown_left <= 0.0:
+		_start_attack()
+		return
+	var to_spot := player.global_position + Vector2(side * keep_distance, 0.0) - global_position
+	var speed := minf(move_speed, to_spot.length() / delta)
+	velocity = to_spot.normalized() * speed
+	move_and_slide()
+
+
 # Other chasing enemies on side s (by their chosen side) closer to the Player
 # than this one, or than max_dist when given.
 func _count_ahead(s: int, max_dist: float = -1.0) -> int:
 	var my_dist := global_position.distance_to(player.global_position) if max_dist < 0.0 else max_dist
 	var count := 0
 	for other in get_tree().get_nodes_in_group("enemies"):
-		if other == self or not other.is_chasing or other.side != s:
+		if other == self or other.is_ranged or not other.is_chasing or other.side != s:
 			continue
 		if other.global_position.distance_to(player.global_position) < my_dist:
 			count += 1
@@ -226,19 +264,22 @@ func _start_attack() -> void:
 	attack_landed = false
 	is_counter = counter_ready
 	counter_ready = false
-	cooldown_left = attack_cooldown
+	cooldown_left = shot_cooldown if is_ranged else attack_cooldown
 	# Left/right only: swing toward the side the Player is on.
 	attack_pivot.scale.x = 1 if player.global_position.x >= global_position.x else -1
 	attack_pivot.visible = true
 	_set_attack_phase(AttackPhase.STARTUP)
 	# Audible cue with the telegraph (see player.play_warn_sound).
 	if player.has_method("play_warn_sound"):
-		player.play_warn_sound(2 if super_armor else (1 if is_counter else 0))
+		var kind := 2 if super_armor else (1 if is_counter else 0)
+		player.play_warn_sound(3 if is_ranged else kind)
 
 
 func _update_attack(delta: float) -> void:
 	attack_time += delta
 	var startup := counter_startup if is_counter else attack_startup
+	if is_ranged:
+		startup = shot_startup
 	if attack_time < startup:
 		_set_attack_phase(AttackPhase.STARTUP)
 	elif attack_time < startup + attack_active:
@@ -260,8 +301,9 @@ func _set_attack_phase(phase: AttackPhase) -> void:
 	attack_phase = phase
 	hitbox.monitoring = phase == AttackPhase.ACTIVE
 	# Wind-up shows only the danger zone; the swing arc appears from ACTIVE on.
-	warn_zone.visible = phase == AttackPhase.STARTUP
-	attack_arc.visible = phase != AttackPhase.STARTUP
+	warn_zone.visible = phase == AttackPhase.STARTUP and not is_ranged
+	aim_line.visible = phase == AttackPhase.STARTUP and is_ranged
+	attack_arc.visible = phase != AttackPhase.STARTUP and not is_ranged
 	# Don't overwrite a hit flash still in progress; it restores the color when done.
 	if flash_time_left <= 0.0:
 		body.color = _body_color()
@@ -283,6 +325,9 @@ func _body_color() -> Color:
 func _apply_hit() -> void:
 	if attack_landed:
 		return
+	if is_ranged:
+		_fire()
+		return
 	for area in hitbox.get_overlapping_areas():
 		var target := area.get_parent()
 		if target.has_method("take_damage"):
@@ -290,6 +335,19 @@ func _apply_hit() -> void:
 			target.take_damage(counter_damage if is_counter else attack_damage, int(attack_pivot.scale.x))
 			attack_landed = true
 			return
+
+
+# One shot per attack (attack_landed marks it fired), from the enemy's feet line
+# so it travels the same Y line the Player walks on.
+func _fire() -> void:
+	attack_landed = true
+	var shot := projectile_scene.instantiate()
+	shot.direction = int(attack_pivot.scale.x)
+	shot.position = global_position + Vector2(shot.direction * 20.0, 0.0)
+	shot.speed = shot_speed
+	shot.damage = shot_damage
+	shot.lifetime = shot_travel / shot_speed
+	player.get_parent().add_child(shot)
 
 
 # direction: 1 = right, -1 = left, 0 = no knockback.
@@ -323,7 +381,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 		knockback_dir = direction
 		knockback_time_left = knockback_duration
 		knockback_push = knockback_distance * knockback_scale
-		if not super_armor:
+		if not super_armor and not is_ranged:
 			counter_ready = true
 
 
