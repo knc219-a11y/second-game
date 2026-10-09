@@ -154,6 +154,24 @@ extends CharacterBody2D
 # Cut box around the Player's body, slightly ahead in the dash direction.
 @export var dash_hit_size: Vector2 = Vector2(48, 58)
 @export var dash_trail_fade: float = 0.15
+# W skill, Whirl Slash: the Player plants its feet and spins for whirl_duration,
+# cutting every enemy around it (once each per spin) for whirl_damage and
+# pushing each one away left/right. Where Q cuts a line ahead, W clears the
+# ring around you when surrounded. No movement, roll or attack while spinning,
+# not invincible, own cooldown. Hit area is an ellipse (y squashed by
+# shockwave_y_scale, like the set shockwave) of whirl_radius at the feet.
+# Placeholder look: the Player flips left/right every whirl_flip_interval s
+# (left/right art only) inside a fading ring. Weapon bonus doesn't apply.
+@export var whirl_duration: float = 0.3
+@export var whirl_radius: float = 90.0
+@export var whirl_damage: int = 8
+@export var whirl_knockback_scale: float = 1.5
+@export var whirl_cooldown: float = 4.0
+@export var whirl_hitstop: float = 0.05
+@export var whirl_hit_pitch: float = 1.15
+@export var whirl_flip_interval: float = 0.05
+@export var whirl_color: Color = Color(0.6, 1, 0.8, 1)
+@export var shake_whirl: float = 2.5
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -204,6 +222,11 @@ var dash_dir: int = 1
 # Enemies already cut by the current dash.
 var dash_hit_targets: Array[Node] = []
 var dash_shape := RectangleShape2D.new()
+var whirl_time_left: float = 0.0
+var whirl_cooldown_left: float = 0.0
+# Facing when the spin started, restored when it ends.
+var whirl_facing: int = 1
+var whirl_hit_targets: Array[Node] = []
 
 @onready var visual: Node2D = $Visual
 @onready var camera: Camera2D = $Camera2D
@@ -230,6 +253,8 @@ var dash_shape := RectangleShape2D.new()
 @onready var dash_trail: Polygon2D = $DashTrail
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
 @onready var shockwave_ring: Line2D = $ShockwaveRing
+# Placeholder ring around the feet while whirling.
+@onready var whirl_ring: Line2D = $WhirlRing
 @onready var roll_sparks: Polygon2D = $RollSparks
 @onready var hit_sound: AudioStreamPlayer = $HitSound
 @onready var hurt_sound: AudioStreamPlayer = $HurtSound
@@ -245,6 +270,7 @@ func _ready() -> void:
 	hp = max_hp
 	hp_label.text = str(hp)
 	_build_shockwave_ring()
+	_build_whirl_ring()
 	dash_shape.size = dash_hit_size
 	_update_skill_label()
 	hit_sound.stream = _synth_sound(0.07, 220.0, 90.0, 0.6)
@@ -290,6 +316,15 @@ func _build_shockwave_ring() -> void:
 	shockwave_ring.default_color = full_set_color if has_full_set() else shockwave_color
 
 
+func _build_whirl_ring() -> void:
+	var points := PackedVector2Array()
+	for i in 33:
+		var a := TAU * i / 32.0
+		points.append(Vector2(cos(a), sin(a) * shockwave_y_scale) * whirl_radius)
+	whirl_ring.points = points
+	whirl_ring.default_color = whirl_color
+
+
 func _physics_process(delta: float) -> void:
 	if hurt_flash_left > 0.0:
 		hurt_flash_left -= delta
@@ -301,6 +336,10 @@ func _physics_process(delta: float) -> void:
 
 	if dash_cooldown_left > 0.0:
 		dash_cooldown_left -= delta
+		_update_skill_label()
+
+	if whirl_cooldown_left > 0.0:
+		whirl_cooldown_left -= delta
 		_update_skill_label()
 
 	if shake_left > 0.0:
@@ -323,12 +362,22 @@ func _physics_process(delta: float) -> void:
 		_update_dash(delta)
 		return
 
+	if whirl_time_left > 0.0:
+		# Whirling: rooted, no roll, attack or dash until it ends.
+		_update_whirl(delta)
+		return
+
 	if roll_time_left <= 0.0 and roll_cooldown_left <= 0.0 and Input.is_action_just_pressed("roll"):
 		_start_roll(input)
 
 	if roll_time_left <= 0.0 and dash_cooldown_left <= 0.0 and Input.is_action_just_pressed("skill_q"):
 		_start_dash()
 		_update_dash(delta)
+		return
+
+	if roll_time_left <= 0.0 and whirl_cooldown_left <= 0.0 and Input.is_action_just_pressed("skill_w"):
+		_start_whirl()
+		_update_whirl(delta)
 		return
 
 	if roll_time_left > 0.0:
@@ -475,11 +524,72 @@ func _dash_hits() -> void:
 		_shake(shake_dash)
 
 
+func _start_whirl() -> void:
+	# Like the dash, the whirl cancels any attack in progress.
+	if attack_phase != AttackPhase.NONE:
+		_cancel_attack()
+	whirl_facing = facing
+	whirl_time_left = whirl_duration
+	whirl_cooldown_left = whirl_cooldown
+	hurt_knockback_left = 0.0
+	velocity = Vector2.ZERO
+	whirl_hit_targets.clear()
+	whirl_ring.visible = true
+	roll_sound.pitch_scale = 1.8
+	roll_sound.play()
+	_update_skill_label()
+
+
+func _update_whirl(delta: float) -> void:
+	_whirl_hits()
+	whirl_time_left -= delta
+	# 0 at start -> 1 at the end: the ring snaps out from 70% and fades.
+	var t := clampf(1.0 - whirl_time_left / whirl_duration, 0.0, 1.0)
+	whirl_ring.scale = Vector2.ONE * lerpf(0.7, 1.0, minf(t * 3.0, 1.0))
+	whirl_ring.modulate.a = 1.0 - t * 0.7
+	# Spin read as fast left/right flips (no new art).
+	var flips := int((whirl_duration - whirl_time_left) / whirl_flip_interval)
+	visual.scale.x = whirl_facing * (1 if flips % 2 == 0 else -1)
+	if whirl_time_left <= 0.0:
+		_end_whirl()
+
+
+func _end_whirl() -> void:
+	if not whirl_ring.visible:
+		return
+	whirl_time_left = 0.0
+	whirl_ring.visible = false
+	facing = whirl_facing
+	visual.scale.x = facing
+
+
+# Every enemy whose feet are inside the ellipse takes whirl_damage once this spin.
+func _whirl_hits() -> void:
+	var landed := false
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy in whirl_hit_targets or enemy.is_queued_for_deletion():
+			continue
+		var offset: Vector2 = enemy.global_position - global_position
+		offset.y /= shockwave_y_scale
+		if offset.length() > whirl_radius:
+			continue
+		whirl_hit_targets.append(enemy)
+		print("Whirl Slash hit %s" % enemy.name)
+		var dir := whirl_facing if is_zero_approx(offset.x) else int(signf(offset.x))
+		enemy.take_damage(whirl_damage, dir, whirl_knockback_scale, 1)
+		landed = true
+	# One hitstop per frame, like the combo.
+	if landed:
+		_start_hitstop(whirl_hitstop)
+		hit_sound.pitch_scale = whirl_hit_pitch
+		hit_sound.play()
+		_shake(shake_whirl)
+
+
 func _update_skill_label() -> void:
-	if dash_cooldown_left > 0.0:
-		skill_label.text = "Q Dash Slash: %.1fs" % dash_cooldown_left
-	else:
-		skill_label.text = "Q Dash Slash: ready"
+	var q := "%.1fs" % dash_cooldown_left if dash_cooldown_left > 0.0 else "ready"
+	var w := "%.1fs" % whirl_cooldown_left if whirl_cooldown_left > 0.0 else "ready"
+	skill_label.text = "Q Dash Slash: %s   W Whirl Slash: %s" % [q, w]
 
 
 func _set_passing_enemies(on: bool) -> void:
@@ -834,8 +944,8 @@ func take_damage(amount: int, direction: int = 0) -> void:
 		return
 	body.color = hurt_flash_color
 	hurt_flash_left = hurt_flash_duration
-	# Rolling or dashing already moves the Player, so the push only applies outside them.
-	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0 and dash_time_left <= 0.0:
+	# Rolling, dashing or whirling already decides where the Player goes, so the push only applies outside them.
+	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0 and dash_time_left <= 0.0 and whirl_time_left <= 0.0:
 		if pet_kind == 1 and attack_phase != AttackPhase.NONE:
 			# Pet passive: the attack holds its ground.
 			pet.flash()
@@ -858,6 +968,7 @@ func _die() -> void:
 	_cancel_attack()
 	_end_roll()
 	_end_dash()
+	_end_whirl()
 	hurt_knockback_left = 0.0
 	shockwave_time_left = 0.0
 	shockwave_ring.visible = false
