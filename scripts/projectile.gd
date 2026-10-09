@@ -10,6 +10,9 @@ extends Area2D
 # splash_color that swells and fades over splash_time).
 # The enemy's own shot splashes too (purple, the default splash_color) when it
 # hits the Player, so it's clear what just hit you.
+# The enemy's shot sits on the enemy_shot layer, which the Player's basic attack
+# hitbox also sees: a swing that overlaps it destroys it (parry, with the
+# splash). Pet shots leave that layer, so swings never touch them.
 var hits_enemies: bool = false
 var aim: Vector2 = Vector2.ZERO
 var direction: int = 1
@@ -25,6 +28,7 @@ func _ready() -> void:
 	if hits_enemies:
 		# World + enemy hurtboxes (the Player's hurtbox is left out).
 		collision_mask = 3
+		collision_layer = 0
 
 
 func _physics_process(delta: float) -> void:
@@ -63,6 +67,12 @@ func _physics_process(delta: float) -> void:
 			_splash()
 			queue_free()
 			return
+
+
+# Called by the Player's attack hitbox (player.gd _apply_hits).
+func parry() -> void:
+	_splash()
+	queue_free()
 
 
 # Its tween follows time_scale, so it holds still during hitstop.
