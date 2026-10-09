@@ -32,7 +32,7 @@ extends CharacterBody2D
 # Keep it under the Hitbox reach (~68 px) so a swing started in range can land.
 @export var attack_range: float = 60.0
 @export var attack_cooldown: float = 1.0
-@export var attack_startup: float = 0.3
+@export var attack_startup: float = 0.38
 @export var attack_active: float = 0.1
 @export var attack_recovery: float = 0.2
 # Telegraph during STARTUP: body turns this color and the danger zone (the real
