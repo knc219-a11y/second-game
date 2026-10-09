@@ -291,6 +291,8 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 		_try_drop_ring()
 		_try_drop_pet()
 		_try_drop_heal()
+		if is_instance_valid(player):
+			player.play_kill_sound()
 		queue_free()
 		return
 

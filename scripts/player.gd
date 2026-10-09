@@ -71,7 +71,10 @@ extends CharacterBody2D
 # Placeholder sounds, synthesized once in _ready (no audio files): a short
 # noisy "thwack" when a Player hit lands (one per frame, like the hitstop; the
 # finisher plays it lower and heavier) and a falling "oof" tone when hurt.
-# Volumes live on the HitSound/HurtSound nodes in player.tscn.
+# Also a noisy whoosh on roll, a deep crunch when an enemy dies (enemy.gd calls
+# it, since the enemy is freed at once) and a rising chime on any pickup
+# (loot.gd calls it; the heal orb plays it higher).
+# Volumes live on the *Sound nodes in player.tscn.
 @export var combo_hit_pitch: Array[float] = [1.0, 1.12, 0.8]
 # Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
 # also releases a shockwave ring around the Player's feet. Every enemy inside
@@ -178,6 +181,9 @@ var pet_kind: int = 0
 @onready var roll_sparks: Polygon2D = $RollSparks
 @onready var hit_sound: AudioStreamPlayer = $HitSound
 @onready var hurt_sound: AudioStreamPlayer = $HurtSound
+@onready var roll_sound: AudioStreamPlayer = $RollSound
+@onready var kill_sound: AudioStreamPlayer = $KillSound
+@onready var pickup_sound: AudioStreamPlayer = $PickupSound
 
 
 func _ready() -> void:
@@ -186,6 +192,9 @@ func _ready() -> void:
 	_build_shockwave_ring()
 	hit_sound.stream = _synth_sound(0.07, 220.0, 90.0, 0.6)
 	hurt_sound.stream = _synth_sound(0.14, 330.0, 140.0, 0.15)
+	roll_sound.stream = _synth_sound(0.18, 600.0, 250.0, 0.85)
+	kill_sound.stream = _synth_sound(0.24, 160.0, 45.0, 0.45)
+	pickup_sound.stream = _synth_sound(0.12, 660.0, 1320.0, 0.0)
 
 
 # Mono 16-bit blip: a sine sweeping from freq_from to freq_to mixed with
@@ -290,6 +299,7 @@ func _start_roll(input: Vector2) -> void:
 	visual.scale.y = 0.6
 	visual.modulate.a = 0.45 if is_invincible else 1.0
 	roll_sparks.visible = has_ring
+	roll_sound.play()
 
 
 func _update_roll(delta: float) -> void:
@@ -567,6 +577,16 @@ func heal(amount: int) -> bool:
 	body.color = heal_flash_color
 	hurt_flash_left = hurt_flash_duration
 	return true
+
+
+# Several deaths or pickups in one frame just restart the same sound.
+func play_kill_sound() -> void:
+	kill_sound.play()
+
+
+func play_pickup_sound(pitch: float = 1.0) -> void:
+	pickup_sound.pitch_scale = pitch
+	pickup_sound.play()
 
 
 func _start_hitstop(duration: float) -> void:
