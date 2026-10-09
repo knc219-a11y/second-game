@@ -8,13 +8,15 @@ extends Area2D
 # aim instead, hurts the first enemy it touches (small side damage, no push)
 # and passes the Player. On that hit it leaves a small splash (a ring in
 # splash_color that swells and fades over splash_time).
+# The enemy's own shot splashes too (purple, the default splash_color) when it
+# hits the Player, so it's clear what just hit you.
 var hits_enemies: bool = false
 var aim: Vector2 = Vector2.ZERO
 var direction: int = 1
 var speed: float = 150.0
 var damage: int = 8
 var lifetime: float = 2.8
-var splash_color: Color = Color(0.45, 1, 0.4, 0.75)
+var splash_color: Color = Color(0.7, 0.4, 1, 0.8)
 var splash_time: float = 0.25
 var splash_size: float = 3.0
 
@@ -47,6 +49,7 @@ func _physics_process(delta: float) -> void:
 			return
 		if target.has_method("take_damage"):
 			target.take_damage(damage, direction)
+			_splash()
 			queue_free()
 			return
 	for body in get_overlapping_bodies():
