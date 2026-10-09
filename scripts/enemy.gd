@@ -46,6 +46,8 @@ extends CharacterBody2D
 # Separate, rarer roll for the Player's armor (any enemy, tough included).
 # No drop once the Player wears it.
 @export var armor_drop_chance: float = 0.12
+# Separate, rarer roll for the Player's ring (any enemy). No drop once worn.
+@export var ring_drop_chance: float = 0.1
 # Separate, rare roll for a pet of kind pet_drop_kind (player.gd pet_names):
 # normal enemies drop the Red Pup (2); test_map.gd gives the tough variant the
 # Brute Cub (1) and its own chance. No drop while the Player has that same pet.
@@ -286,6 +288,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 	if hp <= 0:
 		_try_drop_loot()
 		_try_drop_armor()
+		_try_drop_ring()
 		_try_drop_pet()
 		_try_drop_heal()
 		queue_free()
@@ -337,6 +340,21 @@ func _try_drop_armor() -> void:
 	parent.add_child.call_deferred(loot)
 	parent.move_child.call_deferred(loot, player.get_index())
 	print("%s dropped armor" % name)
+
+
+func _try_drop_ring() -> void:
+	if not is_instance_valid(player) or player.has_ring:
+		return
+	if randf() >= ring_drop_chance:
+		return
+	var loot := loot_scene.instantiate()
+	# Left of the death spot (the heal orb goes right) so all drops stay visible.
+	loot.position = global_position + Vector2(-28, 0)
+	loot.is_ring = true
+	var parent := player.get_parent()
+	parent.add_child.call_deferred(loot)
+	parent.move_child.call_deferred(loot, player.get_index())
+	print("%s dropped a ring" % name)
 
 
 func _try_drop_pet() -> void:

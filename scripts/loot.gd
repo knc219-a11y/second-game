@@ -11,17 +11,28 @@ extends Area2D
 @export var is_pet: bool = false
 # Heal orb instead: restores some Player HP; left on the ground at full HP.
 @export var is_heal: bool = false
+# Ring drop instead: shows the Ring shape.
+@export var is_ring: bool = false
 
 
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
-	var is_weapon := not is_armor and not is_pet and not is_heal
+	var is_weapon := not is_armor and not is_pet and not is_heal and not is_ring
 	$Visual/Sword.visible = is_weapon
 	$Visual/Hilt.visible = is_weapon
 	$Visual/Armor.visible = is_armor
 	$Visual/Pet.visible = is_pet
 	$Visual/Orb.visible = is_heal
+	$Visual/Ring.visible = is_ring
 	$Visual/Glow.visible = not is_heal
+
+
+func _physics_process(_delta: float) -> void:
+	# A heal orb left at full HP: the Player standing on it gets no new
+	# area_entered, so retry while overlapping (it heals once hurt).
+	if is_heal:
+		for area in get_overlapping_areas():
+			_on_area_entered(area)
 
 
 func _on_area_entered(area: Area2D) -> void:
@@ -35,6 +46,8 @@ func _on_area_entered(area: Area2D) -> void:
 		target.equip_pet(tier)
 	elif is_armor:
 		target.equip_armor()
+	elif is_ring:
+		target.equip_ring()
 	else:
 		target.equip_weapon(tier)
 	queue_free()
