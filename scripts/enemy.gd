@@ -46,9 +46,11 @@ extends CharacterBody2D
 # Separate, rarer roll for the Player's armor (any enemy, tough included).
 # No drop once the Player wears it.
 @export var armor_drop_chance: float = 0.12
-# Separate roll for the Player's pet. 0 for normal enemies; the tough variant
-# gets a small chance from test_map.gd. No drop once the Player has the pet.
-@export var pet_drop_chance: float = 0.0
+# Separate, rare roll for a pet of kind pet_drop_kind (player.gd pet_names):
+# normal enemies drop the Red Pup (2); test_map.gd gives the tough variant the
+# Brute Cub (1) and its own chance. No drop while the Player has that same pet.
+@export var pet_drop_chance: float = 0.04
+@export var pet_drop_kind: int = 2
 @export var loot_scene: PackedScene = preload("res://scenes/loot.tscn")
 # Hits during its own attack neither push it nor cancel the swing (the tough
 # variant), so the Player can't just mash through its wind-up and must dodge.
@@ -334,7 +336,7 @@ func _try_drop_armor() -> void:
 
 
 func _try_drop_pet() -> void:
-	if not is_instance_valid(player) or player.pet != null:
+	if not is_instance_valid(player) or player.pet_kind == pet_drop_kind:
 		return
 	if randf() >= pet_drop_chance:
 		return
@@ -342,7 +344,9 @@ func _try_drop_pet() -> void:
 	# A little higher than a weapon drop so all three stay visible together.
 	loot.position = global_position + Vector2(0, -24)
 	loot.is_pet = true
+	loot.tier = pet_drop_kind
+	loot.get_node("Visual/Pet").color = player.pet_colors[pet_drop_kind - 1]
 	var parent := player.get_parent()
 	parent.add_child.call_deferred(loot)
 	parent.move_child.call_deferred(loot, player.get_index())
-	print("%s dropped a pet" % name)
+	print("%s dropped pet kind %d" % [name, pet_drop_kind])

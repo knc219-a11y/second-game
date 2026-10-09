@@ -65,12 +65,19 @@ extends CharacterBody2D
 @export var shockwave_knockback_scale: float = 1.5
 @export var shockwave_duration: float = 0.25
 @export var shockwave_color: Color = Color(1, 0.95, 0.6, 1)
-# Pet: tough enemies rarely drop one (see test_map tough_pet_drop_chance). It
-# follows the Player and lends the tough enemy's passive in a small form: while
-# the Player is attacking, enemy hits don't push the Player back (damage and the
-# hit freeze still apply). It also bites nearby enemies for a little damage
-# (see pet.gd). One pet only; R resets it.
-@export var pet_name: String = "Brute Cub"
+# Pets, one entry per kind (pet_kind 1, 2). Each follows the Player, bites
+# nearby enemies for a little damage (see pet.gd) and lends a small form of its
+# monster's passive:
+# 1 Brute Cub (tough enemies, rarely, test_map tough_pet_drop_chance): while the
+#   Player is attacking, enemy hits don't push the Player back (damage and the
+#   hit freeze still apply).
+# 2 Red Pup (normal enemies, rarely, enemy.pet_drop_chance): bites back - when
+#   an enemy hits the Player, the pup bites right away (its bite cooldown is
+#   skipped), like the normal enemy's counter.
+# One pet at a time: walking over a different pet swaps to it. R resets it.
+@export var pet_names: Array[String] = ["Brute Cub", "Red Pup"]
+@export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(0.85, 0.3, 0.3, 1)]
+@export var pet_passive_text: Array[String] = ["no push while attacking", "bites back when you're hit"]
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
@@ -109,6 +116,8 @@ var weapon_tier: int = 0
 var has_armor: bool = false
 var shockwave_time_left: float = 0.0
 var pet: Node2D = null
+# 0 = no pet, otherwise the index+1 of the pet above.
+var pet_kind: int = 0
 
 @onready var visual: Node2D = $Visual
 @onready var feet: CollisionShape2D = $CollisionShape2D
@@ -381,17 +390,25 @@ func equip_armor() -> void:
 	_update_set_label()
 
 
-func equip_pet() -> void:
-	if pet != null or is_dead:
+func equip_pet(kind: int) -> void:
+	if kind == pet_kind or is_dead:
 		return
-	pet = pet_scene.instantiate()
-	pet.player = self
-	pet.position = position + Vector2(-facing * pet.follow_offset.x, pet.follow_offset.y)
+	var new_pet := pet_scene.instantiate()
+	new_pet.player = self
+	new_pet.position = position + Vector2(-facing * new_pet.follow_offset.x, new_pet.follow_offset.y)
+	if pet != null:
+		# Swap: the old pet leaves, the new one appears where it was.
+		new_pet.position = pet.position
+		pet.queue_free()
+	pet = new_pet
+	pet_kind = kind
+	# Before add_child so pet.gd's base_color picks it up.
+	pet.get_node("Visual/Body").color = pet_colors[kind - 1]
 	# Beside the Player in the scene; pet.tscn's z_index draws it on top so the
 	# bite dash is not hidden behind the Player or the enemy it bites.
 	get_parent().add_child(pet)
-	print("Picked up pet %s" % pet_name)
-	pet_label.text = "Pet: %s (no push while attacking, bites %d)" % [pet_name, pet.bite_damage]
+	print("Picked up pet %s" % pet_names[kind - 1])
+	pet_label.text = "Pet: %s (%s, bites %d)" % [pet_names[kind - 1], pet_passive_text[kind - 1], pet.bite_damage]
 
 
 func _start_hitstop(duration: float) -> void:
@@ -427,13 +444,15 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	hurt_flash_left = hurt_flash_duration
 	# Rolling already moves the Player, so the push only applies outside a roll.
 	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0:
-		if pet != null and attack_phase != AttackPhase.NONE:
+		if pet_kind == 1 and attack_phase != AttackPhase.NONE:
 			# Pet passive: the attack holds its ground.
 			pet.flash()
 			print("Pet blocked the push")
 		else:
 			hurt_knockback_dir = direction
 			hurt_knockback_left = hurt_knockback_duration
+	if pet_kind == 2:
+		pet.bite_now()
 	_start_hitstop(hurt_hitstop_duration)
 
 
