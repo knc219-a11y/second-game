@@ -63,6 +63,11 @@ extends CharacterBody2D
 # Small on its own; it mostly turns a dodge into a little damage. R resets it.
 @export var ring_name: String = "Spark Ring"
 @export var ring_roll_damage: int = 3
+# Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
+# and a crackling halo behind the Player while rolling with the ring.
+@export var graze_spark_color: Color = Color(1, 0.8, 0.25, 1)
+@export var graze_spark_duration: float = 0.18
+@export var graze_spark_size: float = 1.8
 # Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
 # also releases a shockwave ring around the Player's feet. Every enemy inside
 # takes shockwave_damage and is pushed away (left/right) with
@@ -165,6 +170,7 @@ var pet_kind: int = 0
 @onready var pet_label: Label = $Hud/PetLabel
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
 @onready var shockwave_ring: Line2D = $ShockwaveRing
+@onready var roll_sparks: Polygon2D = $RollSparks
 
 
 func _ready() -> void:
@@ -253,6 +259,7 @@ func _start_roll(input: Vector2) -> void:
 	# Placeholder look: squashed while rolling, see-through while invincible.
 	visual.scale.y = 0.6
 	visual.modulate.a = 0.45 if is_invincible else 1.0
+	roll_sparks.visible = has_ring
 
 
 func _update_roll(delta: float) -> void:
@@ -260,6 +267,8 @@ func _update_roll(delta: float) -> void:
 	move_and_slide()
 	if has_ring:
 		_roll_graze()
+		# Crackle: jump the spiky halo around each frame.
+		roll_sparks.rotation += 0.7
 	roll_time_left -= delta
 	if is_invincible and roll_duration - roll_time_left >= roll_invincible:
 		is_invincible = false
@@ -273,6 +282,7 @@ func _end_roll() -> void:
 	is_invincible = false
 	visual.scale.y = 1.0
 	visual.modulate.a = 1.0
+	roll_sparks.visible = false
 
 
 func _set_passing_enemies(on: bool) -> void:
@@ -297,7 +307,35 @@ func _roll_graze() -> void:
 			continue
 		roll_hit_targets.append(target)
 		print("Spark Ring grazed %s" % target.name)
+		# Spark between the two hurtbox centers, i.e. where they rub.
+		var enemy_center: Vector2 = hit.collider.get_node("CollisionShape2D").global_position
+		_spawn_graze_spark((hurt_shape.global_position + enemy_center) / 2.0)
 		target.take_damage(ring_roll_damage, 0)
+
+
+# One-off star burst in the world (not on the enemy, which may die from the graze).
+func _spawn_graze_spark(pos: Vector2) -> void:
+	var spark := Polygon2D.new()
+	var points := PackedVector2Array()
+	for i in 16:
+		var a := TAU * i / 16.0
+		var r := 18.0 if i % 2 == 0 else 6.0
+		points.append(Vector2(cos(a), sin(a)) * r)
+	spark.polygon = points
+	spark.color = graze_spark_color
+	var core := Polygon2D.new()
+	core.polygon = PackedVector2Array([Vector2(0, -6), Vector2(4, 0), Vector2(0, 6), Vector2(-4, 0)])
+	core.color = Color.WHITE
+	spark.add_child(core)
+	spark.global_position = pos
+	spark.rotation = randf() * TAU
+	spark.z_index = 10
+	get_parent().add_child(spark)
+	spark.scale = Vector2.ONE * 0.5
+	var tween := spark.create_tween().set_parallel()
+	tween.tween_property(spark, "scale", Vector2.ONE * graze_spark_size, graze_spark_duration)
+	tween.tween_property(spark, "modulate:a", 0.0, graze_spark_duration).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(spark.queue_free)
 
 
 func _overlaps_enemy() -> bool:
