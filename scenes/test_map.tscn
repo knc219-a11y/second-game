@@ -254,7 +254,7 @@ offset_bottom = -76.0
 horizontal_alignment = 1
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-text = "EXIT"
+text = "TOWN"
 
 [node name="Player" parent="." instance=ExtResource("1")]
 position = Vector2(200, 450)
@@ -280,7 +280,7 @@ offset_bottom = 208.0
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "Stage 1   Enemies left: 3"
+text = "Town   Walk into a gate to start"
 
 [node name="StageBanner" type="Label" parent="Hud"]
 anchors_preset = 10
@@ -292,7 +292,7 @@ horizontal_alignment = 1
 theme_override_constants/outline_size = 10
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 36
-text = "Stage 1"
+text = "Town"
 
 [node name="Fade" type="ColorRect" parent="Hud"]
 anchors_preset = 15
