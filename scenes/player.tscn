@@ -50,7 +50,7 @@ polygon = PackedVector2Array(18, -58, 40, -50, 54, -32, 56, -14, 46, 0, 30, -12,
 
 [node name="Hitbox" type="Area2D" parent="AttackPivot"]
 collision_layer = 0
-collision_mask = 2
+collision_mask = 18
 monitoring = false
 monitorable = false
 

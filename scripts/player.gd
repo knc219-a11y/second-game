@@ -81,6 +81,9 @@ extends CharacterBody2D
 # several enemies winding up together restart one sound instead of stacking.
 # Volumes live on the *Sound nodes in player.tscn.
 @export var combo_hit_pitch: Array[float] = [1.0, 1.12, 0.8]
+# A basic attack swing that overlaps an enemy shot destroys it (projectile.gd
+# parry) and plays the hit sound pitched up, with no hitstop or shake.
+@export var parry_pitch: float = 1.6
 # Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
 # also releases a shockwave ring around the Player's feet. Every enemy inside
 # takes shockwave_damage and is pushed away (left/right) with
@@ -597,7 +600,14 @@ func _set_attack_phase(phase: AttackPhase) -> void:
 
 func _apply_hits() -> void:
 	var landed := false
+	var parried := false
 	for area in hitbox.get_overlapping_areas():
+		# An enemy shot (enemy_shot layer) is swatted away instead of hit.
+		if area.has_method("parry"):
+			if not area.is_queued_for_deletion():
+				area.parry()
+				parried = true
+			continue
 		var target := area.get_parent()
 		# is_queued_for_deletion: already killed this frame (e.g. by the set shockwave).
 		if target in hit_targets or not target.has_method("take_damage") or target.is_queued_for_deletion():
@@ -614,6 +624,10 @@ func _apply_hits() -> void:
 		hit_sound.play()
 		if combo_index == combo_damage.size() - 1:
 			_shake(shake_finisher)
+	elif parried:
+		# Light tick only: no hitstop or shake for swatting a shot.
+		hit_sound.pitch_scale = parry_pitch
+		hit_sound.play()
 
 
 func _hit_damage() -> int:
