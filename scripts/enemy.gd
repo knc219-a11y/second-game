@@ -221,6 +221,9 @@ func _start_attack() -> void:
 	attack_pivot.scale.x = 1 if player.global_position.x >= global_position.x else -1
 	attack_pivot.visible = true
 	_set_attack_phase(AttackPhase.STARTUP)
+	# Audible cue with the telegraph (see player.play_warn_sound).
+	if player.has_method("play_warn_sound"):
+		player.play_warn_sound(2 if super_armor else (1 if is_counter else 0))
 
 
 func _update_attack(delta: float) -> void:

@@ -158,6 +158,9 @@ volume_db = -13.0
 [node name="PickupSound" type="AudioStreamPlayer" parent="."]
 volume_db = -14.0
 
+[node name="WarnSound" type="AudioStreamPlayer" parent="."]
+volume_db = -15.0
+
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(0, -28)
 position_smoothing_enabled = true

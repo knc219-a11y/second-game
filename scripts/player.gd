@@ -74,6 +74,10 @@ extends CharacterBody2D
 # Also a noisy whoosh on roll, a deep crunch when an enemy dies (enemy.gd calls
 # it, since the enemy is freed at once) and a rising chime on any pickup
 # (loot.gd calls it; the heal orb plays it higher).
+# Enemy wind-ups ping a short warning (enemy.gd calls play_warn_sound as the
+# telegraph starts): a rising beep for a normal swing, a sharp high chirp for
+# a magenta counter, a low growl for the tough variant. One shared player, so
+# several enemies winding up together restart one sound instead of stacking.
 # Volumes live on the *Sound nodes in player.tscn.
 @export var combo_hit_pitch: Array[float] = [1.0, 1.12, 0.8]
 # Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
@@ -184,6 +188,9 @@ var pet_kind: int = 0
 @onready var roll_sound: AudioStreamPlayer = $RollSound
 @onready var kill_sound: AudioStreamPlayer = $KillSound
 @onready var pickup_sound: AudioStreamPlayer = $PickupSound
+@onready var warn_sound: AudioStreamPlayer = $WarnSound
+# Indexed by enemy.gd's warn kind: 0 normal, 1 counter, 2 tough.
+var warn_streams: Array[AudioStreamWAV] = []
 
 
 func _ready() -> void:
@@ -195,6 +202,11 @@ func _ready() -> void:
 	roll_sound.stream = _synth_sound(0.18, 600.0, 250.0, 0.85)
 	kill_sound.stream = _synth_sound(0.24, 160.0, 45.0, 0.45)
 	pickup_sound.stream = _synth_sound(0.12, 660.0, 1320.0, 0.0)
+	warn_streams = [
+		_synth_sound(0.12, 520.0, 780.0, 0.0),
+		_synth_sound(0.10, 1100.0, 1600.0, 0.1),
+		_synth_sound(0.22, 140.0, 220.0, 0.3),
+	]
 
 
 # Mono 16-bit blip: a sine sweeping from freq_from to freq_to mixed with
@@ -587,6 +599,12 @@ func play_kill_sound() -> void:
 func play_pickup_sound(pitch: float = 1.0) -> void:
 	pickup_sound.pitch_scale = pitch
 	pickup_sound.play()
+
+
+# kind: 0 normal, 1 counter, 2 tough (see warn_streams).
+func play_warn_sound(kind: int) -> void:
+	warn_sound.stream = warn_streams[kind]
+	warn_sound.play()
 
 
 func _start_hitstop(duration: float) -> void:
