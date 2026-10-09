@@ -50,4 +50,5 @@ func _on_area_entered(area: Area2D) -> void:
 		target.equip_ring()
 	else:
 		target.equip_weapon(tier)
+	target.play_pickup_sound(1.25 if is_heal else 1.0)
 	queue_free()

@@ -149,6 +149,15 @@ volume_db = -10.0
 [node name="HurtSound" type="AudioStreamPlayer" parent="."]
 volume_db = -8.0
 
+[node name="RollSound" type="AudioStreamPlayer" parent="."]
+volume_db = -16.0
+
+[node name="KillSound" type="AudioStreamPlayer" parent="."]
+volume_db = -13.0
+
+[node name="PickupSound" type="AudioStreamPlayer" parent="."]
+volume_db = -14.0
+
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(0, -28)
 position_smoothing_enabled = true
