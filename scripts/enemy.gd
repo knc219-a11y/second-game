@@ -98,6 +98,11 @@ extends CharacterBody2D
 # How far (px) the shot flies before it vanishes.
 @export var shot_travel: float = 420.0
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
+# Line of sight: only winds up when no rock or wall blocks the shot's lane, and
+# stands lane_margin px short of the first one in the way (see _keep_range).
+@export var lane_margin: float = 30.0
+# How far ahead (px) it looks for something in its way before sidestepping.
+@export var sidestep_lookahead: float = 8.0
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -120,6 +125,10 @@ var attack_landed: bool = false
 # Set by a knockback; the next swing is a counter (see counter_color).
 var counter_ready: bool = false
 var is_counter: bool = false
+# Ranged variant: 1 = down, -1 = up while sidestepping round something, else 0.
+var sidestep_dir: int = 0
+# Same size as the shot's collision box (projectile.tscn), for the lane check.
+var lane_shape := RectangleShape2D.new()
 
 @onready var hp_label: Label = $HpLabel
 # Placeholder attack visual; scale.x is locked toward the Player at attack start.
@@ -137,6 +146,7 @@ var is_counter: bool = false
 
 func _ready() -> void:
 	hp = max_hp
+	lane_shape.size = Vector2(14, 12)
 	hp_label.text = str(hp)
 	add_to_group("enemies")
 	player = get_tree().get_first_node_in_group("player") as Node2D
@@ -232,14 +242,57 @@ func _keep_range(to_player: Vector2, delta: float) -> void:
 	var dx := global_position.x - player.global_position.x
 	if dx != 0.0:
 		side = 1 if dx > 0.0 else -1
+	# Line of sight: stand only where nothing blocks the lane to the Player, a bit
+	# closer than keep_distance if a rock or wall is in the way, or on the
+	# Player's other side if there's no room (under shot_min_distance) on this one.
+	var hold := _clear_hold(side)
+	if hold < shot_min_distance:
+		var other_hold := _clear_hold(-side)
+		if other_hold > hold:
+			side = -side
+			hold = other_hold
+	hold = maxf(hold, shot_min_distance)
 	var on_line := absf(to_player.y) <= vertical_tolerance
-	if on_line and absf(dx) >= shot_min_distance and absf(dx) <= shot_range and cooldown_left <= 0.0:
+	if on_line and absf(dx) >= shot_min_distance and absf(dx) <= shot_range and cooldown_left <= 0.0 \
+			and _lane_clear_distance(global_position, -1 if dx > 0.0 else 1, absf(dx)) >= absf(dx):
 		_start_attack()
 		return
-	var to_spot := player.global_position + Vector2(side * keep_distance, 0.0) - global_position
+	var to_spot := player.global_position + Vector2(side * hold, 0.0) - global_position
 	var speed := minf(move_speed, to_spot.length() / delta)
 	velocity = to_spot.normalized() * speed
+	# Something (a rock, the Player, another enemy) right in the way: sidestep
+	# up/down past it instead of pushing into it, away from its middle.
+	var ahead := move_and_collide(to_spot.normalized() * minf(sidestep_lookahead, to_spot.length()), true)
+	if ahead:
+		if sidestep_dir == 0:
+			var blocker := ahead.get_collider() as Node2D
+			sidestep_dir = 1 if blocker == null or blocker.global_position.y <= global_position.y else -1
+		if test_move(global_transform, Vector2(0.0, sidestep_dir * sidestep_lookahead)):
+			sidestep_dir = -sidestep_dir
+		velocity = Vector2(0.0, sidestep_dir * move_speed)
+	else:
+		sidestep_dir = 0
 	move_and_slide()
+
+
+# How far (px) from the Player the ranged enemy can stand on side s with a clear
+# lane: up to keep_distance, minus lane_margin before the first rock or wall.
+func _clear_hold(s: int) -> float:
+	var reach := keep_distance + lane_margin
+	return minf(keep_distance, _lane_clear_distance(player.global_position, s, reach) - lane_margin)
+
+
+# How far (px, up to length) a shot-sized box flies from `from` along dir
+# (1 = right, -1 = left) before touching a wall or rock (world layer, as the
+# shot does). The Player's own body is on that layer too and is skipped.
+func _lane_clear_distance(from: Vector2, dir: int, length: float) -> float:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = lane_shape
+	query.transform = Transform2D(0.0, from + Vector2(0.0, -28.0))
+	query.motion = Vector2(dir * length, 0.0)
+	query.collision_mask = 1
+	query.exclude = [player.get_rid(), get_rid()]
+	return get_world_2d().direct_space_state.cast_motion(query)[0] * length
 
 
 # Other chasing enemies on side s (by their chosen side) closer to the Player
