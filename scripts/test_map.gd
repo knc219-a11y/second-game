@@ -17,6 +17,14 @@ extends Node2D
 # Player. Not strictly off-screen: the map is barely bigger than the view, so an
 # off-screen point would mean a 7-15 s walk before the enemy arrives.
 @export var spawn_min_distance: float = 400.0
+# Rising pressure: every pressure_kills kills one more enemy is kept alive at
+# once (keep_alive +1), up to max_keep_alive, so a geared-up run keeps getting
+# busier instead of staying flat. The HUD counts kills; on each step up the
+# label pops in pressure_color. R restart reloads the scene and resets both.
+@export var pressure_kills: int = 10
+@export var max_keep_alive: int = 6
+@export var pressure_color: Color = Color(1, 0.55, 0.2, 1)
+@export var pressure_flash_time: float = 1.0
 
 # Tough variant: this fraction of respawns has more HP, a better drop chance, drops
 # the Steel Sword (tier 2) instead of the Iron Sword, and super armor (keeps swinging when hit), drawn bigger and darker to read at a glance.
@@ -42,9 +50,38 @@ extends Node2D
 @export var ranged_pet_drop_kind: int = 3
 
 var respawn_left: float = 0.0
+var kills: int = 0
 
 @onready var enemies: Node2D = $Enemies
 @onready var player: Node2D = $Player
+@onready var kill_label: Label = $Hud/KillLabel
+
+
+func _ready() -> void:
+	enemies.child_exiting_tree.connect(_on_enemy_exiting)
+	_update_kill_label()
+
+
+# Enemies leave the tree only when killed (enemy.gd queue_free at 0 HP); the
+# hp check also skips the scene being freed on restart.
+func _on_enemy_exiting(enemy: Node) -> void:
+	if enemy.get("hp") == null or enemy.hp > 0 or player.get("is_dead") == true:
+		return
+	kills += 1
+	var before := keep_alive
+	keep_alive = mini(keep_alive + (1 if kills % pressure_kills == 0 else 0), max_keep_alive)
+	_update_kill_label()
+	if keep_alive > before:
+		print("Pressure up: %d enemies at once" % keep_alive)
+		kill_label.modulate = pressure_color
+		kill_label.scale = Vector2(1.3, 1.3)
+		var tween := kill_label.create_tween().set_parallel()
+		tween.tween_property(kill_label, "modulate", Color(1, 1, 1, 1), pressure_flash_time)
+		tween.tween_property(kill_label, "scale", Vector2.ONE, pressure_flash_time * 0.3)
+
+
+func _update_kill_label() -> void:
+	kill_label.text = "Kills: %d   Enemies at once: %d" % [kills, keep_alive]
 
 
 func _physics_process(delta: float) -> void:
