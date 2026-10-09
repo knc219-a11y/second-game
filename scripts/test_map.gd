@@ -43,6 +43,7 @@ const DUNGEON_ROCKS := [[Vector2(550, 280), Vector2(70, 70)], [Vector2(1050, 280
 const DUNGEON_FLOOR_COLOR := Color(0.13, 0.13, 0.14, 1)
 const ROCK_COLOR := Color(0.5, 0.45, 0.4, 1)
 const LOOT_SCRIPT := preload("res://scripts/loot.gd")
+const CHEST_SCRIPT := preload("res://scripts/chest.gd")
 @export var player_start: Vector2 = Vector2(200, 450)
 @export var exit_position: Vector2 = Vector2(1545, 450)
 # Walking within this many px of the exit moves on.
@@ -58,6 +59,15 @@ var stage: int = 1
 @export var grade_a_hits: int = 2
 const GRADE_COLORS := {"S": Color(1, 0.85, 0.2, 1), "A": Color(0.5, 0.85, 1, 1), "B": Color(1, 1, 1, 1)}
 @export var clear_banner_time: float = 2.5
+# Reward chests by grade, placed in front of the exit: B = 1 chest, A = 2
+# chests and opening one makes the other vanish, S = the same pick where one
+# chest has s_special_chance to be a gold chest holding the special-effect item
+# (the Spark Ring, while not yet worn). Contents are the normal drops: the next
+# weapon tier, the armor while not worn, or else a heal orb.
+@export var chest_scene: PackedScene = preload("res://scenes/chest.tscn")
+@export var chest_offset_x: float = -110.0
+@export var chest_gap_y: float = 160.0
+@export var s_special_chance: float = 0.5
 var stage_cleared: bool = false
 var moving_on: bool = false
 
@@ -241,6 +251,42 @@ func _clear_stage() -> void:
 		kill_label.text = "Stage %d   Clear! Exit on the right ->" % stage
 	exit_gate.position = exit_position
 	exit_gate.visible = true
+	_spawn_chests(grade)
+
+
+func _spawn_chests(grade: String) -> void:
+	# Upgrades the Player doesn't have yet; a heal orb when there are none left.
+	var pool: Array = []
+	if player.weapon_tier < player.weapon_names.size():
+		pool.append(["weapon", player.weapon_tier + 1])
+	if not player.has_armor:
+		pool.append(["armor", 1])
+	pool.shuffle()
+	var count := 1 if grade == "B" else 2
+	var contents: Array = []
+	for i in count:
+		contents.append(pool[i] if i < pool.size() else ["heal", 1])
+	var special: bool = grade == "S" and not player.has_ring and randf() < s_special_chance
+	if special:
+		contents[count - 1] = ["ring", 1]
+	for i in count:
+		var chest := chest_scene.instantiate()
+		chest.kind = contents[i][0]
+		chest.tier = contents[i][1]
+		chest.special = special and i == count - 1
+		var y := 0.0 if count == 1 else (i - 0.5) * chest_gap_y
+		chest.position = exit_position + Vector2(chest_offset_x, y)
+		chest.opened.connect(_on_chest_opened)
+		add_child(chest)
+		move_child(chest, player.get_index())
+	print("Chests: %s%s" % [str(contents), " (special)" if special else ""])
+
+
+# Pick one: the other chests vanish empty.
+func _on_chest_opened(opened_chest: Node) -> void:
+	for child in get_children():
+		if child.get_script() == CHEST_SCRIPT and child != opened_chest and not child.is_open:
+			child.vanish()
 
 
 # Keeps the better of the saved and the new grade ("S" > "A" > "B") for this
@@ -263,7 +309,7 @@ func _is_last_stage() -> bool:
 
 # Fade out, put the Player (and pet) back at the start, bring in the next
 # stage's enemies and rocks (or the dungeon after the last stage), fade in.
-# Drops left on the ground are cleared.
+# Drops and chests left on the ground are cleared.
 func _move_on() -> void:
 	moving_on = true
 	exit_gate.visible = false
@@ -273,7 +319,7 @@ func _move_on() -> void:
 	var to_dungeon := _is_last_stage()
 	stage += 1
 	for child in get_children():
-		if child.get_script() == LOOT_SCRIPT:
+		if child.get_script() == LOOT_SCRIPT or child.get_script() == CHEST_SCRIPT:
 			child.queue_free()
 	player.position = player_start
 	player.velocity = Vector2.ZERO
