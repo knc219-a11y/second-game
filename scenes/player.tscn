@@ -71,6 +71,10 @@ shape = SubResource("RectangleShape2D_hurt")
 visible = false
 width = 6.0
 
+[node name="WhirlRing" type="Line2D" parent="."]
+visible = false
+width = 8.0
+
 [node name="HpLabel" type="Label" parent="."]
 offset_left = -24.0
 offset_top = -78.0
@@ -151,12 +155,12 @@ text = "Pet: none"
 [node name="SkillLabel" type="Label" parent="Hud"]
 offset_left = 16.0
 offset_top = 152.0
-offset_right = 416.0
+offset_right = 616.0
 offset_bottom = 180.0
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "Q Dash Slash: ready"
+text = "Q Dash Slash: ready   W Whirl Slash: ready"
 
 [node name="HitSound" type="AudioStreamPlayer" parent="."]
 volume_db = -10.0
