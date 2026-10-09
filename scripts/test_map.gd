@@ -1,6 +1,33 @@
 extends Node2D
 
-# Test map only: keeps a few enemies around so a fight doesn't end after 3 kills.
+# Normal play is stage by stage (adventure): each stage places a fixed set of
+# enemies from STAGES. Killing them all clears the stage, an exit appears at
+# the right edge, and walking into it fades to the next stage on the same map.
+# The Player node stays, so gear, pet and HP carry over. After the last stage
+# the list repeats. R restart (after death) reloads the scene: back to stage 1.
+#
+# endless_mode turns on the old test-map loop below instead (respawns + rising
+# pressure), kept for a later special dungeon.
+@export var endless_mode: bool = false
+# Kinds: "normal", "tough", "ranged" (variants made by _make_tough/_make_ranged).
+# Positions sit inside the walls and clear of rocks; enemies wait there until
+# the Player comes within their detect_range.
+const STAGES := [
+	[["normal", Vector2(420, 450)], ["normal", Vector2(290, 760)], ["normal", Vector2(750, 450)]],
+	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["ranged", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
+	[["tough", Vector2(800, 450)], ["normal", Vector2(600, 760)], ["ranged", Vector2(1200, 130)], ["ranged", Vector2(1420, 640)], ["normal", Vector2(1150, 800)]],
+]
+@export var player_start: Vector2 = Vector2(200, 450)
+@export var exit_position: Vector2 = Vector2(1545, 450)
+# Walking within this many px of the exit moves on.
+@export var exit_radius: float = 50.0
+@export var fade_time: float = 0.3
+
+var stage: int = 1
+var stage_cleared: bool = false
+var moving_on: bool = false
+
+# Endless mode only: keeps a few enemies around so a fight doesn't end after 3 kills.
 # While fewer than keep_alive enemies are alive, one more appears every
 # respawn_delay s at the nearest map-edge point at least spawn_min_distance px
 # from the Player, so there are never more than keep_alive. Stops once the Player is dead (R reloads the scene).
@@ -55,11 +82,51 @@ var kills: int = 0
 @onready var enemies: Node2D = $Enemies
 @onready var player: Node2D = $Player
 @onready var kill_label: Label = $Hud/KillLabel
+@onready var stage_banner: Label = $Hud/StageBanner
+@onready var fade: ColorRect = $Hud/Fade
+@onready var exit_gate: Node2D = $ExitGate
 
 
 func _ready() -> void:
+	exit_gate.visible = false
+	if not endless_mode:
+		# The scene's placed enemies are only for endless mode; stages bring their own.
+		for e in enemies.get_children():
+			enemies.remove_child(e)
+			e.free()
+		_spawn_stage()
 	enemies.child_exiting_tree.connect(_on_enemy_exiting)
 	_update_kill_label()
+
+
+func _spawn_stage() -> void:
+	stage_cleared = false
+	for entry in STAGES[(stage - 1) % STAGES.size()]:
+		var enemy := enemy_scene.instantiate()
+		enemy.position = entry[1]
+		if entry[0] == "tough":
+			_make_tough(enemy)
+		elif entry[0] == "ranged":
+			_make_ranged(enemy)
+		enemies.add_child(enemy)
+	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
+	_show_banner("Stage %d" % stage)
+
+
+func _show_banner(text: String) -> void:
+	stage_banner.text = text
+	stage_banner.modulate = Color(1, 1, 1, 1)
+	var tween := stage_banner.create_tween()
+	tween.tween_interval(1.2)
+	tween.tween_property(stage_banner, "modulate", Color(1, 1, 1, 0), 0.5)
+
+
+func _alive_enemies() -> int:
+	var alive := 0
+	for e in enemies.get_children():
+		if not e.is_queued_for_deletion():
+			alive += 1
+	return alive
 
 
 # Enemies leave the tree only when killed (enemy.gd queue_free at 0 HP); the
@@ -68,6 +135,13 @@ func _on_enemy_exiting(enemy: Node) -> void:
 	if enemy.get("hp") == null or enemy.hp > 0 or player.get("is_dead") == true:
 		return
 	kills += 1
+	if not endless_mode:
+		_update_kill_label()
+		# The dying enemy is already queued for deletion, so it isn't counted.
+		# Several dying in one frame all see 0: clear only once.
+		if _alive_enemies() == 0 and not stage_cleared:
+			_clear_stage()
+		return
 	var before := keep_alive
 	keep_alive = mini(keep_alive + (1 if kills % pressure_kills == 0 else 0), max_keep_alive)
 	_update_kill_label()
@@ -81,16 +155,51 @@ func _on_enemy_exiting(enemy: Node) -> void:
 
 
 func _update_kill_label() -> void:
-	kill_label.text = "Kills: %d   Enemies at once: %d" % [kills, keep_alive]
+	if endless_mode:
+		kill_label.text = "Kills: %d   Enemies at once: %d" % [kills, keep_alive]
+	else:
+		kill_label.text = "Stage %d   Enemies left: %d" % [stage, _alive_enemies()]
+
+
+func _clear_stage() -> void:
+	stage_cleared = true
+	print("Stage %d clear" % stage)
+	_show_banner("Stage %d Clear!" % stage)
+	kill_label.text = "Stage %d   Clear! Exit on the right ->" % stage
+	exit_gate.position = exit_position
+	exit_gate.visible = true
+
+
+# Fade out, put the Player (and pet) back at the start, bring in the next
+# stage's enemies, fade in. Loot left on the ground stays where it fell.
+func _move_on() -> void:
+	moving_on = true
+	exit_gate.visible = false
+	var tween := create_tween()
+	tween.tween_property(fade, "color:a", 1.0, fade_time)
+	await tween.finished
+	stage += 1
+	player.position = player_start
+	player.velocity = Vector2.ZERO
+	if player.pet != null:
+		player.pet.position = player_start + Vector2(-player.pet.follow_offset.x, player.pet.follow_offset.y)
+	player.camera.reset_smoothing()
+	_spawn_stage()
+	_update_kill_label()
+	tween = create_tween()
+	tween.tween_property(fade, "color:a", 0.0, fade_time)
+	await tween.finished
+	moving_on = false
 
 
 func _physics_process(delta: float) -> void:
 	if player.get("is_dead") == true:
 		return
-	var alive := 0
-	for e in enemies.get_children():
-		if not e.is_queued_for_deletion():
-			alive += 1
+	if not endless_mode:
+		if stage_cleared and not moving_on and player.position.distance_to(exit_position) <= exit_radius:
+			_move_on()
+		return
+	var alive := _alive_enemies()
 	if alive >= keep_alive:
 		respawn_left = respawn_delay
 		return
