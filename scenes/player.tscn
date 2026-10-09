@@ -20,6 +20,12 @@ script = ExtResource("1")
 position = Vector2(0, -7)
 shape = SubResource("RectangleShape2D_feet")
 
+[node name="RollSparks" type="Polygon2D" parent="."]
+visible = false
+position = Vector2(0, -28)
+color = Color(1, 0.8, 0.25, 0.75)
+polygon = PackedVector2Array(40, 0, 23, 11, 25, 31, 6, 25, -9, 39, -16, 20, -36, 17, -26, 0, -36, -17, -16, -20, -9, -39, 6, -25, 25, -31, 23, -11)
+
 [node name="Visual" type="Node2D" parent="."]
 
 [node name="Body" type="Polygon2D" parent="Visual"]
