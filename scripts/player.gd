@@ -57,11 +57,19 @@ extends CharacterBody2D
 # as small a step as one weapon tier. One armor only for now; R resets it.
 @export var armor_name: String = "Leather Armor"
 @export var armor_damage_reduction: int = 2
+# Third slot: a ring any enemy can rarely drop (see enemy.ring_drop_chance).
+# Once worn, rolling through an enemy grazes it for ring_roll_damage (once per
+# enemy per roll, no push, so it doesn't set off a normal enemy's counter).
+# Small on its own; it mostly turns a dodge into a little damage. R resets it.
+@export var ring_name: String = "Spark Ring"
+@export var ring_roll_damage: int = 3
 # Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
 # also releases a shockwave ring around the Player's feet. Every enemy inside
 # takes shockwave_damage and is pushed away (left/right) with
 # shockwave_knockback_scale. The ring is an ellipse (y squashed by
 # shockwave_y_scale) to match the top-down 2.5D floor; hit test uses the same shape.
+# With the ring worn too (full set, 3 pieces) the shockwave grows to the
+# full_set_* values: wider, harder and a hotter color.
 @export var set_name: String = "Warrior's Set"
 @export var shockwave_radius: float = 120.0
 @export var shockwave_y_scale: float = 0.5
@@ -69,6 +77,9 @@ extends CharacterBody2D
 @export var shockwave_knockback_scale: float = 1.5
 @export var shockwave_duration: float = 0.25
 @export var shockwave_color: Color = Color(1, 0.95, 0.6, 1)
+@export var full_set_radius: float = 170.0
+@export var full_set_damage: int = 10
+@export var full_set_color: Color = Color(1, 0.55, 0.2, 1)
 # Pets, one entry per kind (pet_kind 1, 2). Each follows the Player, bites
 # nearby enemies for a little damage (see pet.gd) and lends a small form of its
 # monster's passive:
@@ -125,6 +136,9 @@ var passing_enemies: bool = false
 # 0 = unarmed, otherwise the index+1 of the equipped weapon above.
 var weapon_tier: int = 0
 var has_armor: bool = false
+var has_ring: bool = false
+# Enemies already grazed by the current roll (Spark Ring).
+var roll_hit_targets: Array[Node] = []
 var shockwave_time_left: float = 0.0
 var pet: Node2D = null
 # 0 = no pet, otherwise the index+1 of the pet above.
@@ -146,6 +160,7 @@ var pet_kind: int = 0
 # Placeholder readout of the equipped weapon (top-left of the screen).
 @onready var weapon_label: Label = $Hud/WeaponLabel
 @onready var armor_label: Label = $Hud/ArmorLabel
+@onready var ring_label: Label = $Hud/RingLabel
 @onready var set_label: Label = $Hud/SetLabel
 @onready var pet_label: Label = $Hud/PetLabel
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
@@ -155,12 +170,16 @@ var pet_kind: int = 0
 func _ready() -> void:
 	hp = max_hp
 	hp_label.text = str(hp)
+	_build_shockwave_ring()
+
+
+func _build_shockwave_ring() -> void:
 	var points := PackedVector2Array()
 	for i in 33:
 		var a := TAU * i / 32.0
-		points.append(Vector2(cos(a), sin(a) * shockwave_y_scale) * shockwave_radius)
+		points.append(Vector2(cos(a), sin(a) * shockwave_y_scale) * _shockwave_radius())
 	shockwave_ring.points = points
-	shockwave_ring.default_color = shockwave_color
+	shockwave_ring.default_color = full_set_color if has_full_set() else shockwave_color
 
 
 func _physics_process(delta: float) -> void:
@@ -228,6 +247,7 @@ func _start_roll(input: Vector2) -> void:
 	roll_time_left = roll_duration
 	hurt_knockback_left = 0.0
 	roll_cooldown_left = roll_cooldown
+	roll_hit_targets.clear()
 	_set_passing_enemies(true)
 	is_invincible = roll_invincible > 0.0
 	# Placeholder look: squashed while rolling, see-through while invincible.
@@ -238,6 +258,8 @@ func _start_roll(input: Vector2) -> void:
 func _update_roll(delta: float) -> void:
 	velocity = roll_dir * roll_speed
 	move_and_slide()
+	if has_ring:
+		_roll_graze()
 	roll_time_left -= delta
 	if is_invincible and roll_duration - roll_time_left >= roll_invincible:
 		is_invincible = false
@@ -257,6 +279,25 @@ func _set_passing_enemies(on: bool) -> void:
 	passing_enemies = on
 	set_collision_mask_value(ENEMY_BODY_LAYER, not on)
 	set_collision_layer_value(WORLD_LAYER, not on)
+
+
+# Spark Ring: every enemy hurtbox the Player's hurtbox touches mid-roll takes
+# ring_roll_damage once this roll, with no knockback.
+func _roll_graze() -> void:
+	var hurt_shape: CollisionShape2D = $Hurtbox/CollisionShape2D
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = hurt_shape.shape
+	query.transform = hurt_shape.global_transform
+	query.collision_mask = 2
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	for hit in get_world_2d().direct_space_state.intersect_shape(query, 8):
+		var target: Node = hit.collider.get_parent()
+		if target in roll_hit_targets or not target.has_method("take_damage") or target.is_queued_for_deletion():
+			continue
+		roll_hit_targets.append(target)
+		print("Spark Ring grazed %s" % target.name)
+		target.take_damage(ring_roll_damage, 0)
 
 
 func _overlaps_enemy() -> bool:
@@ -347,6 +388,14 @@ func has_set() -> bool:
 	return weapon_tier > 0 and has_armor
 
 
+func has_full_set() -> bool:
+	return has_set() and has_ring
+
+
+func _shockwave_radius() -> float:
+	return full_set_radius if has_full_set() else shockwave_radius
+
+
 func _release_shockwave() -> void:
 	shockwave_time_left = shockwave_duration
 	_update_shockwave_ring()
@@ -356,10 +405,10 @@ func _release_shockwave() -> void:
 			continue
 		var offset: Vector2 = enemy.global_position - global_position
 		offset.y /= shockwave_y_scale
-		if offset.length() > shockwave_radius:
+		if offset.length() > _shockwave_radius():
 			continue
 		var dir := facing if is_zero_approx(offset.x) else int(signf(offset.x))
-		enemy.take_damage(shockwave_damage, dir, shockwave_knockback_scale)
+		enemy.take_damage(full_set_damage if has_full_set() else shockwave_damage, dir, shockwave_knockback_scale)
 		count += 1
 	print("Set shockwave hit %d enemies" % count)
 
@@ -373,8 +422,12 @@ func _update_shockwave_ring() -> void:
 
 
 func _update_set_label() -> void:
-	if has_set():
-		set_label.text = "Set: %s (3rd hit shockwave)" % set_name
+	_build_shockwave_ring()
+	if has_full_set():
+		set_label.text = "Set: %s 3/3 (big 3rd hit shockwave)" % set_name
+		print("Full set active: %s" % set_name)
+	elif has_set():
+		set_label.text = "Set: %s 2/3 (3rd hit shockwave, ring for more)" % set_name
 		print("Set active: %s" % set_name)
 	else:
 		set_label.text = "Set: none (weapon + armor)"
@@ -398,6 +451,15 @@ func equip_armor() -> void:
 	has_armor = true
 	print("Picked up %s (-%d damage taken)" % [armor_name, armor_damage_reduction])
 	armor_label.text = "Armor: %s (-%d damage taken)" % [armor_name, armor_damage_reduction]
+	_update_set_label()
+
+
+func equip_ring() -> void:
+	if has_ring or is_dead:
+		return
+	has_ring = true
+	print("Picked up %s (roll through enemies: %d damage)" % [ring_name, ring_roll_damage])
+	ring_label.text = "Ring: %s (roll graze %d)" % [ring_name, ring_roll_damage]
 	_update_set_label()
 
 
