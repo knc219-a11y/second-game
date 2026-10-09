@@ -118,6 +118,17 @@ extends CharacterBody2D
 @export var pet_bite_pop: Array[float] = [1.6, 1.15]
 @export var pet_passive_text: Array[String] = ["no push while attacking", "bites back when you're hit"]
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
+# Screen shake on big moments: the combo finisher landing, the set shockwave
+# (bigger with the full set) and the Player getting hit. The camera offset jumps
+# to a random spot up to the strength (px) and fades to zero over
+# shake_duration. It runs on game time, so it holds still during hitstop and
+# never outlives the freeze. A stronger shake replaces a weaker one; weaker ones
+# don't cut a stronger one short.
+@export var shake_finisher: float = 3.0
+@export var shake_shockwave: float = 5.0
+@export var shake_full_set: float = 7.0
+@export var shake_hurt: float = 4.0
+@export var shake_duration: float = 0.15
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -160,8 +171,11 @@ var shockwave_time_left: float = 0.0
 var pet: Node2D = null
 # 0 = no pet, otherwise the index+1 of the pet above.
 var pet_kind: int = 0
+var shake_strength: float = 0.0
+var shake_left: float = 0.0
 
 @onready var visual: Node2D = $Visual
+@onready var camera: Camera2D = $Camera2D
 @onready var feet: CollisionShape2D = $CollisionShape2D
 # Placeholder attack visual. Its direction is locked to facing when the attack starts.
 @onready var attack_pivot: Node2D = $AttackPivot
@@ -247,6 +261,9 @@ func _physics_process(delta: float) -> void:
 
 	if roll_cooldown_left > 0.0:
 		roll_cooldown_left -= delta
+
+	if shake_left > 0.0:
+		_update_shake(delta)
 
 	if shockwave_time_left > 0.0:
 		shockwave_time_left -= delta
@@ -469,6 +486,8 @@ func _apply_hits() -> void:
 		_start_hitstop(combo_hitstop[combo_index])
 		hit_sound.pitch_scale = combo_hit_pitch[combo_index]
 		hit_sound.play()
+		if combo_index == combo_damage.size() - 1:
+			_shake(shake_finisher)
 
 
 func _hit_damage() -> int:
@@ -491,6 +510,7 @@ func _shockwave_radius() -> float:
 func _release_shockwave() -> void:
 	shockwave_time_left = shockwave_duration
 	_update_shockwave_ring()
+	_shake(shake_full_set if has_full_set() else shake_shockwave)
 	var count := 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if enemy.is_queued_for_deletion():
@@ -607,6 +627,40 @@ func play_warn_sound(kind: int) -> void:
 	warn_sound.play()
 
 
+func _shake(strength: float) -> void:
+	# Keep a stronger shake that is still running.
+	if shake_left > 0.0 and strength < _current_shake():
+		return
+	shake_strength = strength
+	shake_left = shake_duration
+	# Kick right away so the hitstop freeze frame already shows the jolt.
+	_jolt_camera(strength)
+
+
+func _current_shake() -> float:
+	return shake_strength * shake_left / shake_duration
+
+
+func _update_shake(delta: float) -> void:
+	# Hitstop (time_scale 0) still ticks with delta 0: hold the current jolt.
+	if delta <= 0.0:
+		return
+	shake_left -= delta
+	if shake_left <= 0.0:
+		_stop_shake()
+	else:
+		_jolt_camera(_current_shake())
+
+
+func _jolt_camera(strength: float) -> void:
+	camera.offset = Vector2(randf_range(-strength, strength), randf_range(-strength, strength))
+
+
+func _stop_shake() -> void:
+	shake_left = 0.0
+	camera.offset = Vector2.ZERO
+
+
 func _start_hitstop(duration: float) -> void:
 	# A hitstop already running is not extended or stacked.
 	if in_hitstop or duration <= 0.0:
@@ -650,6 +704,7 @@ func take_damage(amount: int, direction: int = 0) -> void:
 			hurt_knockback_left = hurt_knockback_duration
 	if pet_kind == 2:
 		pet.bite_now()
+	_shake(shake_hurt)
 	_start_hitstop(hurt_hitstop_duration)
 
 
@@ -664,6 +719,7 @@ func _die() -> void:
 	hurt_knockback_left = 0.0
 	shockwave_time_left = 0.0
 	shockwave_ring.visible = false
+	_stop_shake()
 	$Hurtbox.set_deferred("monitorable", false)
 	hurt_flash_left = 0.0
 	body.color = dead_color
