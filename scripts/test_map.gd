@@ -47,6 +47,7 @@ const DUNGEON_FLOOR_COLOR := Color(0.13, 0.13, 0.14, 1)
 const ROCK_COLOR := Color(0.5, 0.45, 0.4, 1)
 const LOOT_SCRIPT := preload("res://scripts/loot.gd")
 const CHEST_SCRIPT := preload("res://scripts/chest.gd")
+const SHOT_SCRIPT := preload("res://scripts/projectile.gd")
 @export var player_start: Vector2 = Vector2(200, 450)
 @export var exit_position: Vector2 = Vector2(1545, 450)
 # Walking within this many px of the exit moves on.
@@ -134,6 +135,8 @@ var moving_on: bool = false
 @export var ranged_pet_drop_kind: int = 3
 
 var respawn_left: float = 0.0
+# keep_alive grows with kills in the dungeon; back to this when leaving it.
+var base_keep_alive: int = 3
 var kills: int = 0
 
 @onready var enemies: Node2D = $Enemies
@@ -147,6 +150,7 @@ var kills: int = 0
 
 
 func _ready() -> void:
+	base_keep_alive = keep_alive
 	exit_gate.visible = false
 	if not endless_mode:
 		# The scene's placed enemies are only for endless mode; stages bring their own.
@@ -405,6 +409,21 @@ func _move_on(target: int) -> void:
 	tween.tween_property(fade, "color:a", 0.0, fade_time)
 	await tween.finished
 	moving_on = false
+
+
+# Pause menu "Return to Town" from a stage or the dungeon: drops what is left
+# there (enemies, shots in the air, dungeon loop) and fades back to town.
+# Gear, pet and saved progress stay as they are.
+func return_to_town() -> void:
+	endless_mode = false
+	keep_alive = base_keep_alive
+	for e in enemies.get_children():
+		e.queue_free()
+	for child in get_children():
+		if child.get_script() == SHOT_SCRIPT:
+			child.queue_free()
+	print("Return to town")
+	_move_on(0)
 
 
 # Turns the endless loop on from a fresh count; the first enemy comes after
