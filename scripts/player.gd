@@ -129,6 +129,23 @@ extends CharacterBody2D
 @export var shake_full_set: float = 3.5
 @export var shake_hurt: float = 2.0
 @export var shake_duration: float = 0.15
+# Q skill, Dash Slash: a quick left/right dash in the facing direction that
+# cuts every enemy it passes (once each per dash) for dash_damage and pushes
+# it the dash way. It passes through enemies like a roll but is NOT
+# invincible, and dash_cooldown is long, so it's a gap-closer / line cutter
+# that sits beside the X combo and the roll, not a replacement. Travel =
+# dash_speed * dash_duration (~130 px). Weapon bonus doesn't apply.
+# Reuses the hit sound, hitstop and a small shake when it lands.
+@export var dash_speed: float = 650.0
+@export var dash_duration: float = 0.2
+@export var dash_damage: int = 12
+@export var dash_cooldown: float = 5.0
+@export var dash_hitstop: float = 0.06
+@export var dash_hit_pitch: float = 0.9
+@export var shake_dash: float = 3.0
+# Cut box around the Player's body, slightly ahead in the dash direction.
+@export var dash_hit_size: Vector2 = Vector2(48, 58)
+@export var dash_trail_fade: float = 0.15
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -173,6 +190,12 @@ var pet: Node2D = null
 var pet_kind: int = 0
 var shake_strength: float = 0.0
 var shake_left: float = 0.0
+var dash_time_left: float = 0.0
+var dash_cooldown_left: float = 0.0
+var dash_dir: int = 1
+# Enemies already cut by the current dash.
+var dash_hit_targets: Array[Node] = []
+var dash_shape := RectangleShape2D.new()
 
 @onready var visual: Node2D = $Visual
 @onready var camera: Camera2D = $Camera2D
@@ -194,6 +217,9 @@ var shake_left: float = 0.0
 @onready var ring_label: Label = $Hud/RingLabel
 @onready var set_label: Label = $Hud/SetLabel
 @onready var pet_label: Label = $Hud/PetLabel
+@onready var skill_label: Label = $Hud/SkillLabel
+# Placeholder streak behind the Player while dashing (fades after).
+@onready var dash_trail: Polygon2D = $DashTrail
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
 @onready var shockwave_ring: Line2D = $ShockwaveRing
 @onready var roll_sparks: Polygon2D = $RollSparks
@@ -211,6 +237,8 @@ func _ready() -> void:
 	hp = max_hp
 	hp_label.text = str(hp)
 	_build_shockwave_ring()
+	dash_shape.size = dash_hit_size
+	_update_skill_label()
 	hit_sound.stream = _synth_sound(0.07, 220.0, 90.0, 0.6)
 	hurt_sound.stream = _synth_sound(0.14, 330.0, 140.0, 0.15)
 	roll_sound.stream = _synth_sound(0.18, 600.0, 250.0, 0.85)
@@ -262,6 +290,10 @@ func _physics_process(delta: float) -> void:
 	if roll_cooldown_left > 0.0:
 		roll_cooldown_left -= delta
 
+	if dash_cooldown_left > 0.0:
+		dash_cooldown_left -= delta
+		_update_skill_label()
+
 	if shake_left > 0.0:
 		_update_shake(delta)
 
@@ -269,7 +301,7 @@ func _physics_process(delta: float) -> void:
 		shockwave_time_left -= delta
 		_update_shockwave_ring()
 
-	if passing_enemies and roll_time_left <= 0.0 and not _overlaps_enemy():
+	if passing_enemies and roll_time_left <= 0.0 and dash_time_left <= 0.0 and not _overlaps_enemy():
 		_set_passing_enemies(false)
 
 	var input := Vector2(
@@ -277,8 +309,18 @@ func _physics_process(delta: float) -> void:
 		Input.get_axis("move_up", "move_down")
 	)
 
+	if dash_time_left > 0.0:
+		# Dashing: no roll, attack or steering until it ends.
+		_update_dash(delta)
+		return
+
 	if roll_time_left <= 0.0 and roll_cooldown_left <= 0.0 and Input.is_action_just_pressed("roll"):
 		_start_roll(input)
+
+	if roll_time_left <= 0.0 and dash_cooldown_left <= 0.0 and Input.is_action_just_pressed("skill_q"):
+		_start_dash()
+		_update_dash(delta)
+		return
 
 	if roll_time_left > 0.0:
 		# Rolling: direction is fixed, no attacking until it ends.
@@ -328,6 +370,7 @@ func _start_roll(input: Vector2) -> void:
 	visual.scale.y = 0.6
 	visual.modulate.a = 0.45 if is_invincible else 1.0
 	roll_sparks.visible = has_ring
+	roll_sound.pitch_scale = 1.0
 	roll_sound.play()
 
 
@@ -352,6 +395,82 @@ func _end_roll() -> void:
 	visual.scale.y = 1.0
 	visual.modulate.a = 1.0
 	roll_sparks.visible = false
+
+
+func _start_dash() -> void:
+	# Like the roll, the dash cancels any attack in progress.
+	if attack_phase != AttackPhase.NONE:
+		_cancel_attack()
+	# Left/right only: always along the current facing.
+	dash_dir = facing
+	dash_time_left = dash_duration
+	dash_cooldown_left = dash_cooldown
+	hurt_knockback_left = 0.0
+	dash_hit_targets.clear()
+	_set_passing_enemies(true)
+	# Placeholder look: stretched forward, with a streak behind.
+	visual.scale = Vector2(facing * 1.3, 0.85)
+	dash_trail.scale.x = dash_dir
+	dash_trail.modulate.a = 1.0
+	dash_trail.visible = true
+	roll_sound.pitch_scale = 1.4
+	roll_sound.play()
+	_update_skill_label()
+
+
+func _update_dash(delta: float) -> void:
+	# Scaled on the last partial frame so the travel is exactly speed * duration.
+	var step := minf(delta, dash_time_left)
+	velocity = Vector2(dash_dir * dash_speed * (step / delta if delta > 0.0 else 0.0), 0.0)
+	move_and_slide()
+	_dash_hits()
+	dash_time_left -= step
+	if dash_time_left < 0.0001:
+		dash_time_left = 0.0
+	if dash_time_left <= 0.0:
+		_end_dash()
+
+
+func _end_dash() -> void:
+	if dash_time_left <= 0.0 and not dash_trail.visible:
+		return
+	dash_time_left = 0.0
+	visual.scale = Vector2(facing, 1.0)
+	var tween := dash_trail.create_tween()
+	tween.tween_property(dash_trail, "modulate:a", 0.0, dash_trail_fade)
+	tween.tween_callback(dash_trail.hide)
+
+
+# Every enemy hurtbox inside the cut box takes dash_damage once this dash.
+func _dash_hits() -> void:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = dash_shape
+	query.transform = Transform2D(0.0, global_position + Vector2(dash_dir * 16.0, -29.0))
+	query.collision_mask = 2
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	var landed := false
+	for hit in get_world_2d().direct_space_state.intersect_shape(query, 8):
+		var target: Node = hit.collider.get_parent()
+		if target in dash_hit_targets or not target.has_method("take_damage") or target.is_queued_for_deletion():
+			continue
+		dash_hit_targets.append(target)
+		print("Dash Slash hit %s" % target.name)
+		target.take_damage(dash_damage, dash_dir)
+		landed = true
+	# One hitstop per frame, like the combo.
+	if landed:
+		_start_hitstop(dash_hitstop)
+		hit_sound.pitch_scale = dash_hit_pitch
+		hit_sound.play()
+		_shake(shake_dash)
+
+
+func _update_skill_label() -> void:
+	if dash_cooldown_left > 0.0:
+		skill_label.text = "Q Dash Slash: %.1fs" % dash_cooldown_left
+	else:
+		skill_label.text = "Q Dash Slash: ready"
 
 
 func _set_passing_enemies(on: bool) -> void:
@@ -693,8 +812,8 @@ func take_damage(amount: int, direction: int = 0) -> void:
 		return
 	body.color = hurt_flash_color
 	hurt_flash_left = hurt_flash_duration
-	# Rolling already moves the Player, so the push only applies outside a roll.
-	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0:
+	# Rolling or dashing already moves the Player, so the push only applies outside them.
+	if direction != 0 and hurt_knockback_duration > 0.0 and roll_time_left <= 0.0 and dash_time_left <= 0.0:
 		if pet_kind == 1 and attack_phase != AttackPhase.NONE:
 			# Pet passive: the attack holds its ground.
 			pet.flash()
@@ -716,6 +835,7 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	_cancel_attack()
 	_end_roll()
+	_end_dash()
 	hurt_knockback_left = 0.0
 	shockwave_time_left = 0.0
 	shockwave_ring.visible = false
