@@ -56,9 +56,10 @@ extends CharacterBody2D
 # Normal enemies bite back: once a hit knocks one back, its next swing starts as
 # soon as it is in range again (no cooldown wait) and can't be interrupted, so
 # mashing X costs a hit unless the Player steps or rolls out of the wind-up.
-# The wind-up shows counter_color instead of telegraph_color. Not used with
+# The wind-up shows counter_color (magenta, apart from the red body and the
+# yellow normal wind-up) instead of telegraph_color. Not used with
 # super_armor (the tough variant keeps its own rule).
-@export var counter_color: Color = Color(1, 0.3, 0.2, 1)
+@export var counter_color: Color = Color(1, 0.3, 0.9, 1)
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
