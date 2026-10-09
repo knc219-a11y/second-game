@@ -3,7 +3,7 @@ extends Area2D
 # Stage reward chest (test_map.gd _spawn_chests). The Player walking into it
 # opens it: the lid pops off, its item name floats up and the item comes out as
 # a normal drop (loot.tscn) right under the Player, so it is picked up at once
-# (a heal orb at full HP stays on the ground). Emits opened so the map can
+# (an ichor drop at full HP stays on the ground). Emits opened so the map can
 # remove the other chest of a pick-one-of-two.
 signal opened(chest: Area2D)
 
@@ -38,7 +38,7 @@ func item_name() -> String:
 			return player.armor_name if player else "Armor"
 		"ring":
 			return player.ring_name if player else "Ring"
-	return "Heal Orb"
+	return "Ichor Drop"
 
 
 func _on_area_entered(area: Area2D) -> void:

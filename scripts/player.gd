@@ -30,7 +30,7 @@ extends CharacterBody2D
 @export var hurt_hitstop_duration: float = 0.08
 @export var hurt_knockback_distance: float = 16.0
 @export var hurt_knockback_duration: float = 0.12
-# Heal orb pickup (enemy.heal_drop_chance): restores heal_amount HP, capped at
+# Ichor drop (heal) pickup (enemy.heal_drop_chance): restores heal_amount HP, capped at
 # max_hp, with a short green flash.
 @export var heal_amount: int = 15
 @export var heal_flash_color: Color = Color(0.45, 1, 0.55, 1)
@@ -43,25 +43,25 @@ extends CharacterBody2D
 @export var roll_invincible: float = 0.18
 @export var roll_cooldown: float = 0.6
 # Weapons enemies can drop (scenes/loot.tscn), one entry per tier: tier 1 Iron
-# Sword (any enemy), tier 2 Steel Sword (tough enemies only). Walking over a drop
+# Sword (any enemy), tier 2 Bone Blade (tough enemies only). Walking over a drop
 # equips it for the rest of the run if it beats the current one: every combo hit
 # deals that tier's bonus more and the swing arc takes its color. Bonuses stay
 # small so one item is never a big jump (each tier shaves about one hit):
 # enemy 30 HP takes 3 hits unarmed / Iron / Steel; tough 100 HP: 9 / 8 / 7.
 # R restart reloads the scene, so it starts unarmed again.
-@export var weapon_names: Array[String] = ["Iron Sword", "Steel Sword"]
+@export var weapon_names: Array[String] = ["Callus Blade", "Bone Blade"]
 @export var weapon_damage_bonus: Array[int] = [2, 4]
 @export var weapon_arc_color: Array[Color] = [Color(0.55, 0.95, 1, 1), Color(0.8, 0.5, 1, 1)]
 # Second slot: armor any enemy can rarely drop (see enemy.armor_drop_chance).
 # Once worn, every enemy hit deals armor_damage_reduction less (10 -> 8), about
 # as small a step as one weapon tier. One armor only for now, kept across R (SAVE_PATH).
-@export var armor_name: String = "Leather Armor"
+@export var armor_name: String = "Godhide Armor"
 @export var armor_damage_reduction: int = 2
 # Third slot: a ring any enemy can rarely drop (see enemy.ring_drop_chance).
 # Once worn, rolling through an enemy grazes it for ring_roll_damage (once per
 # enemy per roll, no push, so it doesn't set off a normal enemy's counter).
 # Small on its own; it mostly turns a dodge into a little damage. Kept across R (SAVE_PATH).
-@export var ring_name: String = "Spark Ring"
+@export var ring_name: String = "Nerve Ring"
 @export var ring_roll_damage: int = 3
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
 # and a crackling halo behind the Player while rolling with the ring.
@@ -73,7 +73,7 @@ extends CharacterBody2D
 # finisher plays it lower and heavier) and a falling "oof" tone when hurt.
 # Also a noisy whoosh on roll, a deep crunch when an enemy dies (enemy.gd calls
 # it, since the enemy is freed at once) and a rising chime on any pickup
-# (loot.gd calls it; the heal orb plays it higher).
+# (loot.gd calls it; the ichor drop plays it higher).
 # Enemy wind-ups ping a short warning (enemy.gd calls play_warn_sound as the
 # telegraph starts): a rising beep for a normal swing, a sharp high chirp for
 # a magenta counter, a low growl for the tough variant, a falling whistle for
@@ -91,7 +91,7 @@ extends CharacterBody2D
 # shockwave_y_scale) to match the top-down 2.5D floor; hit test uses the same shape.
 # With the ring worn too (full set, 3 pieces) the shockwave grows to the
 # full_set_* values: wider, harder and a hotter color.
-@export var set_name: String = "Warrior's Set"
+@export var set_name: String = "Hunter's Set"
 @export var shockwave_radius: float = 120.0
 @export var shockwave_y_scale: float = 0.5
 @export var shockwave_damage: int = 5
@@ -104,13 +104,13 @@ extends CharacterBody2D
 # Pets, one entry per kind (pet_kind 1, 2, 3). Each follows the Player, bites
 # nearby enemies for a little damage (see pet.gd) and lends a small form of its
 # monster's passive:
-# 1 Brute Cub (tough enemies, rarely, test_map tough_pet_drop_chance): while the
+# 1 Marrow Cub (tough enemies, rarely, test_map tough_pet_drop_chance): while the
 #   Player is attacking, enemy hits don't push the Player back (damage and the
 #   hit freeze still apply).
-# 2 Red Pup (normal enemies, rarely, enemy.pet_drop_chance): bites back - when
+# 2 Scab Pup (normal enemies, rarely, enemy.pet_drop_chance): bites back - when
 #   an enemy hits the Player, the pup bites right away (its bite cooldown is
 #   skipped), like the normal enemy's counter.
-# 3 Spit Imp (ranged enemies, rarely, test_map ranged_pet_drop_chance): keeps
+# 3 Clot Imp (ranged enemies, rarely, test_map ranged_pet_drop_chance): keeps
 #   its distance like its monster - instead of dashing in to bite, it spits a
 #   small shot (projectile.tscn) at the nearest enemy within a longer range.
 # The two bite differently so they read apart: the Cub chomps rarely but harder
@@ -118,7 +118,7 @@ extends CharacterBody2D
 # about 2 damage a second).
 # The Pup is rose, not the normal enemy's red, so it doesn't read as an enemy.
 # One pet at a time: walking over a different pet swaps to it. Kept across R (SAVE_PATH).
-@export var pet_names: Array[String] = ["Brute Cub", "Red Pup", "Spit Imp"]
+@export var pet_names: Array[String] = ["Marrow Cub", "Scab Pup", "Clot Imp"]
 @export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(1, 0.6, 0.72, 1), Color(0.75, 0.62, 1, 1)]
 @export var pet_bite_damage: Array[int] = [5, 2, 4]
 @export var pet_bite_cooldown: Array[float] = [2.5, 0.9, 2.0]
@@ -215,7 +215,7 @@ var passing_enemies: bool = false
 var weapon_tier: int = 0
 var has_armor: bool = false
 var has_ring: bool = false
-# Enemies already grazed by the current roll (Spark Ring).
+# Enemies already grazed by the current roll (Nerve Ring).
 var roll_hit_targets: Array[Node] = []
 var shockwave_time_left: float = 0.0
 var pet: Node2D = null
@@ -607,7 +607,7 @@ func _set_passing_enemies(on: bool) -> void:
 	set_collision_layer_value(WORLD_LAYER, not on)
 
 
-# Spark Ring: every enemy hurtbox the Player's hurtbox touches mid-roll takes
+# Nerve Ring: every enemy hurtbox the Player's hurtbox touches mid-roll takes
 # ring_roll_damage once this roll, with no knockback.
 func _roll_graze() -> void:
 	var hurt_shape: CollisionShape2D = $Hurtbox/CollisionShape2D
@@ -622,7 +622,7 @@ func _roll_graze() -> void:
 		if target in roll_hit_targets or not target.has_method("take_damage") or target.is_queued_for_deletion():
 			continue
 		roll_hit_targets.append(target)
-		print("Spark Ring grazed %s" % target.name)
+		print("Nerve Ring grazed %s" % target.name)
 		# Spark between the two hurtbox centers, i.e. where they rub.
 		var enemy_center: Vector2 = hit.collider.get_node("CollisionShape2D").global_position
 		_spawn_graze_spark((hurt_shape.global_position + enemy_center) / 2.0)
@@ -891,7 +891,7 @@ func _load_gear() -> void:
 	print("Loaded save: weapon %d, armor %s, ring %s, pet %d" % [weapon_tier, has_armor, has_ring, pet_kind])
 
 
-# Returns false at full HP (or dead) so the orb stays on the ground.
+# Returns false at full HP (or dead) so the drop stays on the ground.
 func heal(amount: int) -> bool:
 	if is_dead or hp >= max_hp:
 		return false

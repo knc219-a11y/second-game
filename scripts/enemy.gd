@@ -2,6 +2,11 @@ extends CharacterBody2D
 
 # Test enemy: chases the Player in a straight line (no pathfinding) and stops
 # beside it on the same Y line, where the Player's left/right attack can reach.
+# Lore (design doc worldbuilding-mapping.md, names not shown in game): each kind
+# is regrown tissue of the dead god and shares its body lineage with its pet and
+# weapon drop. normal = Husk Crawler (skin: Scab Pup, Callus Blade), tough =
+# Rib Brute (bone: Marrow Cub, Bone Blade), ranged = Blood Spitter (blood:
+# Clot Imp, shares the Callus Blade).
 @export var max_hp: int = 30
 @export var move_speed: float = 90.0
 # Starts chasing when the Player comes within detect_range px.
@@ -49,11 +54,11 @@ extends CharacterBody2D
 # Separate, rarer roll for the Player's ring (any enemy). No drop once worn.
 @export var ring_drop_chance: float = 0.1
 # Separate, rare roll for a pet of kind pet_drop_kind (player.gd pet_names):
-# normal enemies drop the Red Pup (2); test_map.gd gives the tough variant the
-# Brute Cub (1) and its own chance. No drop while the Player has that same pet.
+# normal enemies drop the Scab Pup (2); test_map.gd gives the tough variant the
+# Marrow Cub (1) and its own chance. No drop while the Player has that same pet.
 @export var pet_drop_chance: float = 0.04
 @export var pet_drop_kind: int = 2
-# Separate roll for a heal orb (player.gd heal_amount), only while the Player
+# Separate roll for an ichor drop (player.gd heal_amount), only while the Player
 # is hurt.
 @export var heal_drop_chance: float = 0.15
 @export var loot_scene: PackedScene = preload("res://scenes/loot.tscn")
@@ -74,7 +79,7 @@ extends CharacterBody2D
 # Floating damage number above the enemy on each hit: rises damage_number_rise px
 # and fades over damage_number_time s. Style (take_damage number_style):
 # 0 = normal hit, 1 = big hit (combo finisher, Q Dash Slash, set shockwave),
-# 2 = small side damage (pet bite, Spark Ring graze).
+# 2 = small side damage (pet bite, Nerve Ring graze).
 @export var damage_number_time: float = 0.5
 @export var damage_number_rise: float = 28.0
 @export var damage_number_sizes: PackedInt32Array = PackedInt32Array([16, 22, 12])
@@ -555,7 +560,7 @@ func _try_drop_ring() -> void:
 	if randf() >= ring_drop_chance:
 		return
 	var loot := loot_scene.instantiate()
-	# Left of the death spot (the heal orb goes right) so all drops stay visible.
+	# Left of the death spot (the ichor drop goes right) so all drops stay visible.
 	loot.position = global_position + Vector2(-28, 0)
 	loot.is_ring = true
 	var parent := player.get_parent()
@@ -593,4 +598,4 @@ func _try_drop_heal() -> void:
 	var parent := player.get_parent()
 	parent.add_child.call_deferred(loot)
 	parent.move_child.call_deferred(loot, player.get_index())
-	print("%s dropped a heal orb" % name)
+	print("%s dropped an ichor drop" % name)

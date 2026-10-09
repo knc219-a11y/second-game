@@ -82,8 +82,8 @@ const GRADE_COLORS := {"S": Color(1, 0.85, 0.2, 1), "A": Color(0.5, 0.85, 1, 1),
 # Reward chests by grade, placed in front of the exit: B = 1 chest, A = 2
 # chests and opening one makes the other vanish, S = the same pick where one
 # chest has s_special_chance to be a gold chest holding the special-effect item
-# (the Spark Ring, while not yet worn). Contents are the normal drops: the next
-# weapon tier, the armor while not worn, or else a heal orb.
+# (the Nerve Ring, while not yet worn). Contents are the normal drops: the next
+# weapon tier, the armor while not worn, or else an ichor drop.
 @export var chest_scene: PackedScene = preload("res://scenes/chest.tscn")
 @export var chest_offset_x: float = -110.0
 @export var chest_gap_y: float = 160.0
@@ -118,13 +118,13 @@ var moving_on: bool = false
 @export var pressure_flash_time: float = 1.0
 
 # Tough variant: this fraction of respawns has more HP, a better drop chance, drops
-# the Steel Sword (tier 2) instead of the Iron Sword, and super armor (keeps swinging when hit), drawn bigger and darker to read at a glance.
+# the Bone Blade (tier 2) instead of the Callus Blade, and super armor (keeps swinging when hit), drawn bigger and darker to read at a glance.
 @export var tough_chance: float = 0.3
 @export var tough_hp: int = 100
 @export var tough_drop_chance: float = 0.7
 @export var tough_drop_tier: int = 2
-# Tough enemies rarely drop the Brute Cub (player.gd pet kind 1) instead of
-# the normal enemies' Red Pup.
+# Tough enemies rarely drop the Marrow Cub (player.gd pet kind 1) instead of
+# the normal enemies' Scab Pup.
 @export var tough_pet_drop_chance: float = 0.08
 @export var tough_pet_drop_kind: int = 1
 @export var tough_body_scale: float = 1.25
@@ -136,7 +136,7 @@ var moving_on: bool = false
 @export var ranged_move_speed: float = 80.0
 @export var ranged_body_scale: float = 0.85
 @export var ranged_color: Color = Color(0.5, 0.35, 0.9, 1)
-# Ranged enemies rarely drop the Spit Imp (player.gd pet kind 3).
+# Ranged enemies rarely drop the Clot Imp (player.gd pet kind 3).
 @export var ranged_pet_drop_chance: float = 0.1
 @export var ranged_pet_drop_kind: int = 3
 
@@ -330,7 +330,7 @@ func _clear_stage() -> void:
 
 
 func _spawn_chests(grade: String) -> void:
-	# Upgrades the Player doesn't have yet; a heal orb when there are none left.
+	# Upgrades the Player doesn't have yet; an ichor drop when there are none left.
 	var pool: Array = []
 	if player.weapon_tier < player.weapon_names.size():
 		pool.append(["weapon", player.weapon_tier + 1])
