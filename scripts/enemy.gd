@@ -53,6 +53,12 @@ extends CharacterBody2D
 # Hits during its own attack neither push it nor cancel the swing (the tough
 # variant), so the Player can't just mash through its wind-up and must dodge.
 @export var super_armor: bool = false
+# Normal enemies bite back: once a hit knocks one back, its next swing starts as
+# soon as it is in range again (no cooldown wait) and can't be interrupted, so
+# mashing X costs a hit unless the Player steps or rolls out of the wind-up.
+# The wind-up shows counter_color instead of telegraph_color. Not used with
+# super_armor (the tough variant keeps its own rule).
+@export var counter_color: Color = Color(1, 0.3, 0.2, 1)
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -72,6 +78,9 @@ var attack_time: float = 0.0
 var cooldown_left: float = 0.0
 # True once the current attack has damaged the Player (one hit per attack).
 var attack_landed: bool = false
+# Set by a knockback; the next swing is a counter (see counter_color).
+var counter_ready: bool = false
+var is_counter: bool = false
 
 @onready var hp_label: Label = $HpLabel
 # Placeholder attack visual; scale.x is locked toward the Player at attack start.
@@ -153,7 +162,7 @@ func _chase(delta: float) -> void:
 	# Lower bound (half of stop_distance) keeps it from parking right above/below the Player.
 	var on_line := absf(to_player.y) <= vertical_tolerance
 	var in_attack_range := not is_crossing and on_line and absf(dx) <= attack_range and absf(dx) >= stop_distance * 0.5
-	if in_attack_range and cooldown_left <= 0.0:
+	if in_attack_range and (cooldown_left <= 0.0 or counter_ready):
 		_start_attack()
 		return
 	var at_side := absf(dx) <= stop_distance and absf(dx) >= stop_distance * 0.5
@@ -193,6 +202,8 @@ func _player_is_dead() -> bool:
 func _start_attack() -> void:
 	attack_time = 0.0
 	attack_landed = false
+	is_counter = counter_ready
+	counter_ready = false
 	cooldown_left = attack_cooldown
 	# Left/right only: swing toward the side the Player is on.
 	attack_pivot.scale.x = 1 if player.global_position.x >= global_position.x else -1
@@ -214,6 +225,7 @@ func _update_attack(delta: float) -> void:
 
 
 func _end_attack() -> void:
+	is_counter = false
 	attack_pivot.visible = false
 	_set_attack_phase(AttackPhase.NONE)
 
@@ -237,7 +249,9 @@ func _set_attack_phase(phase: AttackPhase) -> void:
 
 
 func _body_color() -> Color:
-	return telegraph_color if attack_phase == AttackPhase.STARTUP else base_color
+	if attack_phase != AttackPhase.STARTUP:
+		return base_color
+	return counter_color if is_counter else telegraph_color
 
 
 func _apply_hit() -> void:
@@ -268,7 +282,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 	body.color = flash_color
 	flash_time_left = flash_duration
 
-	if super_armor and attack_phase != AttackPhase.NONE:
+	if (super_armor or is_counter) and attack_phase != AttackPhase.NONE:
 		return
 	if direction != 0 and knockback_duration > 0.0:
 		# Knockback interrupts the attack; the cooldown keeps running.
@@ -277,6 +291,8 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 		knockback_dir = direction
 		knockback_time_left = knockback_duration
 		knockback_push = knockback_distance * knockback_scale
+		if not super_armor:
+			counter_ready = true
 
 
 func _try_drop_loot() -> void:
