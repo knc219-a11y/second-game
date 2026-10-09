@@ -66,7 +66,8 @@ extends CharacterBody2D
 # Pet: tough enemies rarely drop one (see test_map tough_pet_drop_chance). It
 # follows the Player and lends the tough enemy's passive in a small form: while
 # the Player is attacking, enemy hits don't push the Player back (damage and the
-# hit freeze still apply). One pet only, it doesn't fight; R resets it.
+# hit freeze still apply). It also bites nearby enemies for a little damage
+# (see pet.gd). One pet only; R resets it.
 @export var pet_name: String = "Brute Cub"
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
@@ -388,7 +389,7 @@ func equip_pet() -> void:
 	get_parent().add_child(pet)
 	get_parent().move_child(pet, get_index())
 	print("Picked up pet %s" % pet_name)
-	pet_label.text = "Pet: %s (no push while attacking)" % pet_name
+	pet_label.text = "Pet: %s (no push while attacking, bites %d)" % [pet_name, pet.bite_damage]
 
 
 func _start_hitstop(duration: float) -> void:
