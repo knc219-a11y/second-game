@@ -9,6 +9,8 @@ extends CharacterBody2D
 # 3-hit combo on X. A press in the last combo_window s of a hit (end of ACTIVE
 # + RECOVERY) is remembered and the next hit starts as soon as this one ends.
 # No press in time and the combo goes back to hit 1. After hit 3 it loops.
+# Holding X counts as pressing it every frame, so a held X chains the combo at
+# the same pace as the fastest mashing (no extra damage or speed).
 # Per-hit tables, index 0..2. combo_hitstop is the brief global freeze when
 # the hit lands (real-time seconds).
 @export var combo_window: float = 0.2
@@ -188,10 +190,10 @@ func _physics_process(delta: float) -> void:
 		visual.scale.x = facing
 
 	if attack_phase != AttackPhase.NONE:
-		if Input.is_action_just_pressed("attack") and _attack_total() - attack_time <= combo_window:
+		if Input.is_action_pressed("attack") and _attack_total() - attack_time <= combo_window:
 			combo_queued = true
 		_update_attack(delta)
-	elif Input.is_action_just_pressed("attack"):
+	elif Input.is_action_pressed("attack"):
 		_start_attack(0)
 
 
