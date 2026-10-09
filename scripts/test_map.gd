@@ -6,6 +6,9 @@ extends Node2D
 # The Player node stays, so gear, pet and HP carry over. After the last stage
 # the list repeats. R restart (after death) reloads the scene: back to stage 1.
 #
+# Each stage also has its own rock layout (STAGE_ROCKS) and floor tint; moving
+# on clears drops left on the ground.
+#
 # endless_mode turns on the old test-map loop below instead (respawns + rising
 # pressure), kept for a later special dungeon.
 @export var endless_mode: bool = false
@@ -17,6 +20,23 @@ const STAGES := [
 	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["ranged", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
 	[["tough", Vector2(800, 450)], ["normal", Vector2(600, 760)], ["ranged", Vector2(1200, 130)], ["ranged", Vector2(1420, 640)], ["normal", Vector2(1150, 800)]],
 ]
+# Rock layout per stage, same order as STAGES: [center, size] boxes. Stage 1
+# matches the Rock1-4 placed in test_map.tscn (still used as-is by endless
+# mode). Every layout leaves a way from player_start to exit_position and
+# keeps clear of the stage's enemy positions.
+const STAGE_ROCKS := [
+	# Open field with a few scattered rocks.
+	[[Vector2(500, 300), Vector2(120, 60)], [Vector2(1000, 550), Vector2(80, 160)], [Vector2(1250, 250), Vector2(200, 40)], [Vector2(350, 650), Vector2(60, 60)]],
+	# Two broken walls make a middle lane with doorways (enemies only chase in
+	# a straight line, so a long unbroken wall would strand them); a pillar
+	# sits in front of the exit.
+	[[Vector2(550, 280), Vector2(300, 40)], [Vector2(1000, 280), Vector2(300, 40)], [Vector2(650, 620), Vector2(300, 40)], [Vector2(1100, 620), Vector2(300, 40)], [Vector2(1350, 450), Vector2(60, 120)]],
+	# Four pillars around the tough enemy; a split wall guards the exit side.
+	[[Vector2(650, 300), Vector2(60, 60)], [Vector2(950, 300), Vector2(60, 60)], [Vector2(650, 600), Vector2(60, 60)], [Vector2(950, 600), Vector2(60, 60)], [Vector2(1300, 250), Vector2(40, 260)], [Vector2(1300, 720), Vector2(40, 200)]],
+]
+const STAGE_FLOOR_COLORS := [Color(0.18, 0.32, 0.2, 1), Color(0.3, 0.27, 0.18, 1), Color(0.2, 0.22, 0.3, 1)]
+const ROCK_COLOR := Color(0.5, 0.45, 0.4, 1)
+const LOOT_SCRIPT := preload("res://scripts/loot.gd")
 @export var player_start: Vector2 = Vector2(200, 450)
 @export var exit_position: Vector2 = Vector2(1545, 450)
 # Walking within this many px of the exit moves on.
@@ -85,6 +105,8 @@ var kills: int = 0
 @onready var stage_banner: Label = $Hud/StageBanner
 @onready var fade: ColorRect = $Hud/Fade
 @onready var exit_gate: Node2D = $ExitGate
+@onready var obstacles: Node2D = $Obstacles
+@onready var floor_poly: Polygon2D = $Floor
 
 
 func _ready() -> void:
@@ -101,6 +123,8 @@ func _ready() -> void:
 
 func _spawn_stage() -> void:
 	stage_cleared = false
+	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()])
+	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
 		var enemy := enemy_scene.instantiate()
 		enemy.position = entry[1]
@@ -111,6 +135,32 @@ func _spawn_stage() -> void:
 		enemies.add_child(enemy)
 	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
 	_show_banner("Stage %d" % stage)
+
+
+# Replaces every Rock* under Obstacles (walls stay) with the given boxes.
+func _build_rocks(boxes: Array) -> void:
+	for child in obstacles.get_children():
+		if child.name.begins_with("Rock"):
+			obstacles.remove_child(child)
+			child.queue_free()
+	for i in boxes.size():
+		var center: Vector2 = boxes[i][0]
+		var half: Vector2 = boxes[i][1] / 2.0
+		var rock := StaticBody2D.new()
+		rock.name = "Rock%d" % (i + 1)
+		rock.position = center
+		var shape := RectangleShape2D.new()
+		shape.size = boxes[i][1]
+		var col := CollisionShape2D.new()
+		col.name = "CollisionShape2D"
+		col.shape = shape
+		rock.add_child(col)
+		var visual := Polygon2D.new()
+		visual.name = "Visual"
+		visual.color = ROCK_COLOR
+		visual.polygon = PackedVector2Array([Vector2(-half.x, -half.y), Vector2(half.x, -half.y), half, Vector2(-half.x, half.y)])
+		rock.add_child(visual)
+		obstacles.add_child(rock)
 
 
 func _show_banner(text: String) -> void:
@@ -171,7 +221,7 @@ func _clear_stage() -> void:
 
 
 # Fade out, put the Player (and pet) back at the start, bring in the next
-# stage's enemies, fade in. Loot left on the ground stays where it fell.
+# stage's enemies and rocks, fade in. Drops left on the ground are cleared.
 func _move_on() -> void:
 	moving_on = true
 	exit_gate.visible = false
@@ -179,6 +229,9 @@ func _move_on() -> void:
 	tween.tween_property(fade, "color:a", 1.0, fade_time)
 	await tween.finished
 	stage += 1
+	for child in get_children():
+		if child.get_script() == LOOT_SCRIPT:
+			child.queue_free()
 	player.position = player_start
 	player.velocity = Vector2.ZERO
 	if player.pet != null:
