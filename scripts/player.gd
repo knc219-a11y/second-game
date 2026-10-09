@@ -68,6 +68,11 @@ extends CharacterBody2D
 @export var graze_spark_color: Color = Color(1, 0.8, 0.25, 1)
 @export var graze_spark_duration: float = 0.18
 @export var graze_spark_size: float = 1.8
+# Placeholder sounds, synthesized once in _ready (no audio files): a short
+# noisy "thwack" when a Player hit lands (one per frame, like the hitstop; the
+# finisher plays it lower and heavier) and a falling "oof" tone when hurt.
+# Volumes live on the HitSound/HurtSound nodes in player.tscn.
+@export var combo_hit_pitch: Array[float] = [1.0, 1.12, 0.8]
 # Set effect, on only while any weapon AND the armor are worn: the 3rd combo hit
 # also releases a shockwave ring around the Player's feet. Every enemy inside
 # takes shockwave_damage and is pushed away (left/right) with
@@ -171,12 +176,37 @@ var pet_kind: int = 0
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
 @onready var shockwave_ring: Line2D = $ShockwaveRing
 @onready var roll_sparks: Polygon2D = $RollSparks
+@onready var hit_sound: AudioStreamPlayer = $HitSound
+@onready var hurt_sound: AudioStreamPlayer = $HurtSound
 
 
 func _ready() -> void:
 	hp = max_hp
 	hp_label.text = str(hp)
 	_build_shockwave_ring()
+	hit_sound.stream = _synth_sound(0.07, 220.0, 90.0, 0.6)
+	hurt_sound.stream = _synth_sound(0.14, 330.0, 140.0, 0.15)
+
+
+# Mono 16-bit blip: a sine sweeping from freq_from to freq_to mixed with
+# white noise (noise = 0..1 share), with a fast attack and linear fade out.
+func _synth_sound(duration: float, freq_from: float, freq_to: float, noise: float) -> AudioStreamWAV:
+	var rate := 22050
+	var count := int(duration * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var phase := 0.0
+	for i in count:
+		var t := float(i) / count
+		phase += TAU * lerpf(freq_from, freq_to, t) / rate
+		var env := minf(t * 40.0, 1.0) * (1.0 - t)
+		var sample := (sin(phase) * (1.0 - noise) + randf_range(-1.0, 1.0) * noise) * env
+		data.encode_s16(i * 2, int(sample * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = rate
+	wav.data = data
+	return wav
 
 
 func _build_shockwave_ring() -> void:
@@ -415,6 +445,8 @@ func _apply_hits() -> void:
 	# One hitstop per frame no matter how many enemies were hit together.
 	if landed:
 		_start_hitstop(combo_hitstop[combo_index])
+		hit_sound.pitch_scale = combo_hit_pitch[combo_index]
+		hit_sound.play()
 
 
 func _hit_damage() -> int:
@@ -563,6 +595,7 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	hp = maxi(hp - amount, 0)
 	hp_label.text = str(hp)
 	print("Player HP: %d" % hp)
+	hurt_sound.play()
 	if hp <= 0:
 		_die()
 		return
