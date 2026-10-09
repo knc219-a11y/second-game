@@ -101,6 +101,14 @@ extends CharacterBody2D
 # Line of sight: only winds up when no rock or wall blocks the shot's lane, and
 # stands lane_margin px short of the first one in the way (see _keep_range).
 @export var lane_margin: float = 30.0
+# Death burst (placeholder): instead of just vanishing, a white copy of the body
+# topples over away from the hit, slides death_slide px and fades over
+# death_duration s, while death_shard_count chips of its color fly out. Like
+# the damage numbers it runs on game time, so it holds still during hitstop.
+@export var death_duration: float = 0.35
+@export var death_slide: float = 28.0
+@export var death_shard_count: int = 6
+@export var death_shard_distance: float = 46.0
 # How far ahead (px) it looks for something in its way before sidestepping.
 @export var sidestep_lookahead: float = 8.0
 
@@ -419,6 +427,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 		_try_drop_heal()
 		if is_instance_valid(player):
 			player.play_kill_sound()
+		_spawn_death_burst(direction)
 		queue_free()
 		return
 
@@ -461,6 +470,51 @@ func _spawn_damage_number(amount: int, style: int) -> void:
 	tween.parallel().tween_property(label, "modulate:a", 0.0, damage_number_time * 0.5) \
 		.set_delay(damage_number_time * 0.5)
 	tween.tween_callback(label.queue_free)
+
+
+# One-off nodes in the world (the enemy itself is freed this frame).
+func _spawn_death_burst(direction: int) -> void:
+	if not is_instance_valid(player):
+		return
+	# No push (pet bite, ring graze): fall away from the Player.
+	var dir := direction
+	if dir == 0:
+		dir = 1 if global_position.x >= player.global_position.x else -1
+	var world := player.get_parent()
+	# Body copy, pivot at the feet like the real one, so it tips over sideways.
+	var corpse := Polygon2D.new()
+	corpse.polygon = body.polygon
+	corpse.color = Color.WHITE
+	corpse.scale = body.scale
+	corpse.global_position = global_position
+	corpse.z_index = 5
+	world.add_child(corpse)
+	var tween := corpse.create_tween()
+	tween.tween_property(corpse, "color", base_color, death_duration * 0.3)
+	tween.parallel().tween_property(corpse, "rotation", dir * PI * 0.5, death_duration * 0.6) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(corpse, "position:x", corpse.position.x + dir * death_slide, death_duration) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(corpse, "modulate:a", 0.0, death_duration * 0.5).set_delay(death_duration * 0.5)
+	tween.tween_callback(corpse.queue_free)
+	# Chips burst from the chest, mostly toward the hit direction.
+	var center := global_position + Vector2(0, -28) * body.scale.y
+	for i in death_shard_count:
+		var shard := Polygon2D.new()
+		shard.polygon = PackedVector2Array([Vector2(-4, -4), Vector2(4, -4), Vector2(4, 4), Vector2(-4, 4)])
+		shard.color = base_color.lightened(0.2)
+		shard.global_position = center
+		shard.rotation = randf() * TAU
+		shard.z_index = 6
+		world.add_child(shard)
+		var angle := randf_range(-PI * 0.45, PI * 0.45)
+		var to := Vector2(cos(angle) * dir, sin(angle)) * death_shard_distance * randf_range(0.6, 1.0)
+		var t := shard.create_tween().set_parallel()
+		t.tween_property(shard, "position", shard.position + to, death_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(shard, "rotation", shard.rotation + dir * TAU, death_duration)
+		t.tween_property(shard, "scale", Vector2.ONE * 0.3, death_duration)
+		t.tween_property(shard, "modulate:a", 0.0, death_duration * 0.4).set_delay(death_duration * 0.6)
+		t.chain().tween_callback(shard.queue_free)
 
 
 func _try_drop_loot() -> void:
