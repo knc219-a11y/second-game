@@ -76,7 +76,8 @@ extends CharacterBody2D
 # (loot.gd calls it; the heal orb plays it higher).
 # Enemy wind-ups ping a short warning (enemy.gd calls play_warn_sound as the
 # telegraph starts): a rising beep for a normal swing, a sharp high chirp for
-# a magenta counter, a low growl for the tough variant. One shared player, so
+# a magenta counter, a low growl for the tough variant, a falling whistle for
+# the ranged variant's shot. One shared player, so
 # several enemies winding up together restart one sound instead of stacking.
 # Volumes live on the *Sound nodes in player.tscn.
 @export var combo_hit_pitch: Array[float] = [1.0, 1.12, 0.8]
@@ -248,6 +249,7 @@ func _ready() -> void:
 		_synth_sound(0.12, 520.0, 780.0, 0.0),
 		_synth_sound(0.10, 1100.0, 1600.0, 0.1),
 		_synth_sound(0.22, 140.0, 220.0, 0.3),
+		_synth_sound(0.18, 1300.0, 650.0, 0.05),
 	]
 
 
@@ -741,7 +743,7 @@ func play_pickup_sound(pitch: float = 1.0) -> void:
 	pickup_sound.play()
 
 
-# kind: 0 normal, 1 counter, 2 tough (see warn_streams).
+# kind: 0 normal, 1 counter, 2 tough, 3 ranged shot (see warn_streams).
 func play_warn_sound(kind: int) -> void:
 	warn_sound.stream = warn_streams[kind]
 	warn_sound.play()

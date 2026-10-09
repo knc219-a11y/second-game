@@ -30,6 +30,13 @@ extends Node2D
 @export var tough_pet_drop_kind: int = 1
 @export var tough_body_scale: float = 1.25
 @export var tough_color: Color = Color(0.45, 0.12, 0.2, 1)
+# Ranged variant (enemy.gd is_ranged): this further fraction of respawns keeps
+# its distance and shoots; low HP, slower, drawn smaller and violet.
+@export var ranged_chance: float = 0.2
+@export var ranged_hp: int = 20
+@export var ranged_move_speed: float = 80.0
+@export var ranged_body_scale: float = 0.85
+@export var ranged_color: Color = Color(0.5, 0.35, 0.9, 1)
 
 var respawn_left: float = 0.0
 
@@ -66,8 +73,11 @@ func _spawn_enemy() -> void:
 	# Spawned beyond detect_range: make it come for the Player anyway.
 	enemy.detect_range = INF
 	enemy.lose_range = INF
-	if randf() < tough_chance:
+	var roll := randf()
+	if roll < tough_chance:
 		_make_tough(enemy)
+	elif roll < tough_chance + ranged_chance:
+		_make_ranged(enemy)
 	enemies.add_child(enemy)
 
 
@@ -83,3 +93,13 @@ func _make_tough(enemy: Node) -> void:
 	var body := enemy.get_node("Body") as Polygon2D
 	body.color = tough_color
 	body.scale = Vector2(tough_body_scale, tough_body_scale)
+
+
+func _make_ranged(enemy: Node) -> void:
+	enemy.name = "Ranged"
+	enemy.max_hp = ranged_hp
+	enemy.move_speed = ranged_move_speed
+	enemy.is_ranged = true
+	var body := enemy.get_node("Body") as Polygon2D
+	body.color = ranged_color
+	body.scale = Vector2(ranged_body_scale, ranged_body_scale)
