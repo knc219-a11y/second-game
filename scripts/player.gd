@@ -30,6 +30,10 @@ extends CharacterBody2D
 @export var hurt_hitstop_duration: float = 0.08
 @export var hurt_knockback_distance: float = 16.0
 @export var hurt_knockback_duration: float = 0.12
+# Heal orb pickup (enemy.heal_drop_chance): restores heal_amount HP, capped at
+# max_hp, with a short green flash.
+@export var heal_amount: int = 15
+@export var heal_flash_color: Color = Color(0.45, 1, 0.55, 1)
 @export var dead_color: Color = Color(0.3, 0.3, 0.3, 1)
 # Roll (Space): short burst in the move direction (facing if idle).
 # Travel = roll_speed * roll_duration (~110 px). Invincible for the first
@@ -419,6 +423,18 @@ func equip_pet(kind: int) -> void:
 	get_parent().add_child(pet)
 	print("Picked up pet %s" % pet_names[kind - 1])
 	pet_label.text = "Pet: %s (%s, bites %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], pet.bite_damage, pet.bite_cooldown]
+
+
+# Returns false at full HP (or dead) so the orb stays on the ground.
+func heal(amount: int) -> bool:
+	if is_dead or hp >= max_hp:
+		return false
+	hp = mini(hp + amount, max_hp)
+	hp_label.text = str(hp)
+	print("Healed to %d" % hp)
+	body.color = heal_flash_color
+	hurt_flash_left = hurt_flash_duration
+	return true
 
 
 func _start_hitstop(duration: float) -> void:

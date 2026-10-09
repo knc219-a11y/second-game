@@ -9,21 +9,29 @@ extends Area2D
 @export var is_armor: bool = false
 # Pet drop instead (rare): shows the Pet shape, tinted by the dropping enemy.
 @export var is_pet: bool = false
+# Heal orb instead: restores some Player HP; left on the ground at full HP.
+@export var is_heal: bool = false
 
 
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
-	$Visual/Sword.visible = not is_armor and not is_pet
-	$Visual/Hilt.visible = not is_armor and not is_pet
+	var is_weapon := not is_armor and not is_pet and not is_heal
+	$Visual/Sword.visible = is_weapon
+	$Visual/Hilt.visible = is_weapon
 	$Visual/Armor.visible = is_armor
 	$Visual/Pet.visible = is_pet
+	$Visual/Orb.visible = is_heal
+	$Visual/Glow.visible = not is_heal
 
 
 func _on_area_entered(area: Area2D) -> void:
 	var target := area.get_parent()
 	if not target.has_method("equip_weapon"):
 		return
-	if is_pet:
+	if is_heal:
+		if not target.heal(target.heal_amount):
+			return
+	elif is_pet:
 		target.equip_pet(tier)
 	elif is_armor:
 		target.equip_armor()
