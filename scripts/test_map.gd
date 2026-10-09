@@ -5,7 +5,7 @@ extends Node2D
 # the right edge, and walking into it fades to the next stage on the same map.
 # The Player node stays, so gear, pet and HP carry over. The last stage's exit
 # leads into the special dungeon instead (endless_mode turned on, its own rocks
-# and floor). R restart (after death) reloads the scene: back to stage 1.
+# and floor). R restart (after death) reloads the scene: back to stage 1, gear and pet kept (player.gd SAVE_PATH).
 #
 # Each stage also has its own rock layout (STAGE_ROCKS) and floor tint; moving
 # on clears drops left on the ground.

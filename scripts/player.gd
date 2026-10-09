@@ -54,13 +54,13 @@ extends CharacterBody2D
 @export var weapon_arc_color: Array[Color] = [Color(0.55, 0.95, 1, 1), Color(0.8, 0.5, 1, 1)]
 # Second slot: armor any enemy can rarely drop (see enemy.armor_drop_chance).
 # Once worn, every enemy hit deals armor_damage_reduction less (10 -> 8), about
-# as small a step as one weapon tier. One armor only for now; R resets it.
+# as small a step as one weapon tier. One armor only for now, kept across R (SAVE_PATH).
 @export var armor_name: String = "Leather Armor"
 @export var armor_damage_reduction: int = 2
 # Third slot: a ring any enemy can rarely drop (see enemy.ring_drop_chance).
 # Once worn, rolling through an enemy grazes it for ring_roll_damage (once per
 # enemy per roll, no push, so it doesn't set off a normal enemy's counter).
-# Small on its own; it mostly turns a dodge into a little damage. R resets it.
+# Small on its own; it mostly turns a dodge into a little damage. Kept across R (SAVE_PATH).
 @export var ring_name: String = "Spark Ring"
 @export var ring_roll_damage: int = 3
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
@@ -117,7 +117,7 @@ extends CharacterBody2D
 # with a big pop, the Pup nibbles often for less, the Imp spits from afar (all
 # about 2 damage a second).
 # The Pup is rose, not the normal enemy's red, so it doesn't read as an enemy.
-# One pet at a time: walking over a different pet swaps to it. R resets it.
+# One pet at a time: walking over a different pet swaps to it. Kept across R (SAVE_PATH).
 @export var pet_names: Array[String] = ["Brute Cub", "Red Pup", "Spit Imp"]
 @export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(1, 0.6, 0.72, 1), Color(0.75, 0.62, 1, 1)]
 @export var pet_bite_damage: Array[int] = [5, 2, 4]
@@ -178,6 +178,11 @@ extends CharacterBody2D
 # roll ends inside an enemy, this lasts until the Player has walked out, so it
 # never gets stuck in or shoved out of one.
 const WORLD_LAYER := 1
+# Gear and pet are permanent farming progress: written here on every pickup and
+# read back on _ready, so dying + R (scene reload) keeps them. One ConfigFile,
+# one section per kind of progress ("gear" now; stage grades can get their own
+# section later). Delete the file to start fresh.
+const SAVE_PATH := "user://save.cfg"
 const ENEMY_BODY_LAYER := 4
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
@@ -273,6 +278,8 @@ func _ready() -> void:
 	_build_whirl_ring()
 	dash_shape.size = dash_hit_size
 	_update_skill_label()
+	# Deferred: equip_pet adds the pet to the map, which is still adding its children now.
+	_load_gear.call_deferred()
 	hit_sound.stream = _synth_sound(0.07, 220.0, 90.0, 0.6)
 	hurt_sound.stream = _synth_sound(0.14, 330.0, 140.0, 0.15)
 	roll_sound.stream = _synth_sound(0.18, 600.0, 250.0, 0.85)
@@ -805,6 +812,7 @@ func equip_weapon(tier: int) -> void:
 	weapon_label.text = "Weapon: %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]]
 	attack_arc.color = weapon_arc_color[i]
 	_update_set_label()
+	_save_gear()
 
 
 func equip_armor() -> void:
@@ -814,6 +822,7 @@ func equip_armor() -> void:
 	print("Picked up %s (-%d damage taken)" % [armor_name, armor_damage_reduction])
 	armor_label.text = "Armor: %s (-%d damage taken)" % [armor_name, armor_damage_reduction]
 	_update_set_label()
+	_save_gear()
 
 
 func equip_ring() -> void:
@@ -823,6 +832,7 @@ func equip_ring() -> void:
 	print("Picked up %s (roll through enemies: %d damage)" % [ring_name, ring_roll_damage])
 	ring_label.text = "Ring: %s (roll graze %d)" % [ring_name, ring_roll_damage]
 	_update_set_label()
+	_save_gear()
 
 
 func equip_pet(kind: int) -> void:
@@ -848,6 +858,35 @@ func equip_pet(kind: int) -> void:
 	get_parent().add_child(pet)
 	print("Picked up pet %s" % pet_names[kind - 1])
 	pet_label.text = "Pet: %s (%s, %s %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], "spits" if pet.spits else "bites", pet.bite_damage, pet.bite_cooldown]
+	_save_gear()
+
+
+func _save_gear() -> void:
+	var cfg := ConfigFile.new()
+	# Load first so sections other than "gear" (later progress) are kept.
+	cfg.load(SAVE_PATH)
+	cfg.set_value("gear", "weapon_tier", weapon_tier)
+	cfg.set_value("gear", "armor", has_armor)
+	cfg.set_value("gear", "ring", has_ring)
+	cfg.set_value("gear", "pet_kind", pet_kind)
+	cfg.save(SAVE_PATH)
+
+
+func _load_gear() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return
+	var tier: int = clampi(cfg.get_value("gear", "weapon_tier", 0), 0, weapon_names.size())
+	var kind: int = clampi(cfg.get_value("gear", "pet_kind", 0), 0, pet_names.size())
+	if tier > 0:
+		equip_weapon(tier)
+	if cfg.get_value("gear", "armor", false):
+		equip_armor()
+	if cfg.get_value("gear", "ring", false):
+		equip_ring()
+	if kind > 0:
+		equip_pet(kind)
+	print("Loaded save: weapon %d, armor %s, ring %s, pet %d" % [weapon_tier, has_armor, has_ring, pet_kind])
 
 
 # Returns false at full HP (or dead) so the orb stays on the ground.
