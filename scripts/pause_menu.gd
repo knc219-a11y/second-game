@@ -48,7 +48,7 @@ func _can_pause() -> bool:
 func _open() -> void:
 	options = ["Resume"]
 	if not map.in_hub:
-		options.append("Return to Town")
+		options.append("Return to Hidehold")
 	options.append("Title")
 	selected = 0
 	_refresh()
@@ -61,7 +61,7 @@ func _choose(choice: String) -> void:
 	match choice:
 		"Resume":
 			resume_pending = true
-		"Return to Town":
+		"Return to Hidehold":
 			_resume()
 			map.return_to_town()
 		"Title":

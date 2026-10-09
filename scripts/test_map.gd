@@ -21,13 +21,19 @@ extends Node2D
 # the Player comes within their detect_range.
 const STAGES := [
 	[["normal", Vector2(420, 450)], ["normal", Vector2(290, 760)], ["normal", Vector2(750, 450)]],
-	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["ranged", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
+	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["tough", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
 	[["tough", Vector2(800, 450)], ["normal", Vector2(600, 760)], ["ranged", Vector2(1200, 130)], ["ranged", Vector2(1420, 640)], ["normal", Vector2(1150, 800)]],
 ]
 # Rock layout per stage, same order as STAGES: [center, size] boxes. Stage 1
 # matches the Rock1-4 placed in test_map.tscn (still used as-is by endless
 # mode). Every layout leaves a way from player_start to exit_position and
 # keeps clear of the stage's enemy positions.
+# Region names (lore: the town sits on a dead god's corpse; each stage is one
+# body lineage: 1 skin, 2 bone, 3 blood-flesh), shown on banners, gates and HUD.
+# Stage 1 brings normal (skin), stage 2 adds tough (bone), stage 3 ranged (blood).
+const TOWN_NAME := "Hidehold"
+const STAGE_NAMES := ["Husk Flats", "Rib Field", "Vein Hollow"]
+const DUNGEON_NAME := "The Wound"
 const STAGE_ROCKS := [
 	# Open field with a few scattered rocks.
 	[[Vector2(500, 300), Vector2(120, 60)], [Vector2(1000, 550), Vector2(80, 160)], [Vector2(1250, 250), Vector2(200, 40)], [Vector2(350, 650), Vector2(60, 60)]],
@@ -196,18 +202,18 @@ func _enter_hub() -> void:
 		label.modulate = Color(1, 1, 1, 1)
 		if i >= STAGES.size():
 			(gate.get_node("Door") as Polygon2D).color = DUNGEON_GATE_COLOR
-			label.text = "Dungeon" if open else "Dungeon\nLocked"
+			label.text = DUNGEON_NAME if open else DUNGEON_NAME + "\nLocked"
 			continue
 		var best: String = cfg.get_value("grades", "stage_%d" % (i + 1), "")
 		if not open:
-			label.text = "Stage %d\nLocked" % (i + 1)
+			label.text = "%s\nLocked" % STAGE_NAMES[i]
 		elif best == "":
-			label.text = "Stage %d\nNew" % (i + 1)
+			label.text = "%s\nNew" % STAGE_NAMES[i]
 		else:
-			label.text = "Stage %d\nBest %s" % [i + 1, best]
+			label.text = "%s\nBest %s" % [STAGE_NAMES[i], best]
 			label.modulate = GRADE_COLORS[best]
 	print("Town: unlocked %d" % unlocked)
-	_show_banner("Town")
+	_show_banner(TOWN_NAME)
 
 
 func _spawn_stage() -> void:
@@ -224,7 +230,7 @@ func _spawn_stage() -> void:
 			_make_ranged(enemy)
 		enemies.add_child(enemy)
 	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
-	_show_banner("Stage %d" % stage)
+	_show_banner("Stage %d  %s" % [stage, _stage_name()])
 
 
 # Replaces every Rock* under Obstacles (walls stay) with the given boxes.
@@ -251,6 +257,10 @@ func _build_rocks(boxes: Array) -> void:
 		visual.polygon = PackedVector2Array([Vector2(-half.x, -half.y), Vector2(half.x, -half.y), half, Vector2(-half.x, half.y)])
 		rock.add_child(visual)
 		obstacles.add_child(rock)
+
+
+func _stage_name() -> String:
+	return STAGE_NAMES[(stage - 1) % STAGE_NAMES.size()]
 
 
 func _show_banner(text: String, color: Color = Color(1, 1, 1, 1), hold: float = 1.2) -> void:
@@ -298,11 +308,11 @@ func _on_enemy_exiting(enemy: Node) -> void:
 
 func _update_kill_label() -> void:
 	if in_hub:
-		kill_label.text = "Town   Walk into a gate to start"
+		kill_label.text = TOWN_NAME + "   Walk into a gate to start"
 	elif endless_mode:
-		kill_label.text = "Dungeon   Kills: %d   Enemies at once: %d" % [kills, keep_alive]
+		kill_label.text = DUNGEON_NAME + "   Kills: %d   Enemies at once: %d" % [kills, keep_alive]
 	else:
-		kill_label.text = "Stage %d   Enemies left: %d" % [stage, _alive_enemies()]
+		kill_label.text = "%s   Enemies left: %d" % [_stage_name(), _alive_enemies()]
 
 
 func _clear_stage() -> void:
@@ -312,8 +322,8 @@ func _clear_stage() -> void:
 	var best := _save_best_grade(grade)
 	_save_unlock(stage + 1)
 	print("Stage %d clear: grade %s (%d hits), best %s" % [stage, grade, hits, best])
-	_show_banner("Stage %d Clear!\nGrade %s  (%d hits)   Best %s" % [stage, grade, hits, best], GRADE_COLORS[grade], clear_banner_time)
-	kill_label.text = "Stage %d   Clear! Back to town on the right ->" % stage
+	_show_banner("%s Clear!\nGrade %s  (%d hits)   Best %s" % [_stage_name(), grade, hits, best], GRADE_COLORS[grade], clear_banner_time)
+	kill_label.text = "%s   Clear! Back to %s on the right ->" % [_stage_name(), TOWN_NAME]
 	exit_gate.position = exit_position
 	exit_gate.visible = true
 	_spawn_chests(grade)
@@ -435,7 +445,7 @@ func _enter_dungeon() -> void:
 	_build_rocks(DUNGEON_ROCKS)
 	floor_poly.color = DUNGEON_FLOOR_COLOR
 	print("Dungeon")
-	_show_banner("Special Dungeon")
+	_show_banner(DUNGEON_NAME)
 
 
 func _physics_process(delta: float) -> void:
