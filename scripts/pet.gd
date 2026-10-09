@@ -23,6 +23,14 @@ extends Node2D
 @export var bite_color: Color = Color(1, 1, 1, 1)
 # On a bite the pet swells to this size and shrinks back over flash_duration.
 @export var bite_pop: float = 1.0
+# Spit Imp (player.gd pet kind 3): no dash; it spits a small shot from where it
+# stands at the nearest enemy within spit_range of the Player instead.
+@export var spits: bool = false
+@export var spit_range: float = 260.0
+@export var spit_speed: float = 320.0
+@export var spit_travel: float = 320.0
+@export var spit_color: Color = Color(0.75, 0.62, 1, 0.6)
+@export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 
 var player: Node2D
 var flash_left: float = 0.0
@@ -78,7 +86,7 @@ func bite_now() -> void:
 
 func _try_bite() -> void:
 	var best: Node2D = null
-	var best_dist := bite_range
+	var best_dist := spit_range if spits else bite_range
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if enemy.is_queued_for_deletion():
 			continue
@@ -87,6 +95,9 @@ func _try_bite() -> void:
 			best = enemy
 			best_dist = d
 	if best == null:
+		return
+	if spits:
+		_spit(best)
 		return
 	lunge_target = best
 	lunge_left = lunge_max_time
@@ -111,3 +122,22 @@ func _update_lunge(delta: float) -> void:
 			flash_left = flash_duration
 			pop_left = flash_duration
 			print("Pet bit %s for %d" % [lunge_target.name, bite_damage])
+
+
+func _spit(target: Node2D) -> void:
+	bite_left = bite_cooldown
+	var shot := projectile_scene.instantiate()
+	shot.hits_enemies = true
+	shot.position = global_position
+	# Aim at the enemy's body (both sit on their feet, so feet to feet).
+	shot.aim = (target.global_position - global_position).normalized()
+	shot.speed = spit_speed
+	shot.damage = bite_damage
+	shot.lifetime = spit_travel / spit_speed
+	shot.get_node("Glow").color = spit_color
+	shot.scale = Vector2(0.7, 0.7)
+	get_parent().add_child(shot)
+	body.color = bite_color
+	flash_left = flash_duration
+	pop_left = flash_duration
+	print("Pet spat at %s" % target.name)

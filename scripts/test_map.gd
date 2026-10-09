@@ -37,6 +37,9 @@ extends Node2D
 @export var ranged_move_speed: float = 80.0
 @export var ranged_body_scale: float = 0.85
 @export var ranged_color: Color = Color(0.5, 0.35, 0.9, 1)
+# Ranged enemies rarely drop the Spit Imp (player.gd pet kind 3).
+@export var ranged_pet_drop_chance: float = 0.1
+@export var ranged_pet_drop_kind: int = 3
 
 var respawn_left: float = 0.0
 
@@ -100,6 +103,8 @@ func _make_ranged(enemy: Node) -> void:
 	enemy.max_hp = ranged_hp
 	enemy.move_speed = ranged_move_speed
 	enemy.is_ranged = true
+	enemy.pet_drop_chance = ranged_pet_drop_chance
+	enemy.pet_drop_kind = ranged_pet_drop_kind
 	var body := enemy.get_node("Body") as Polygon2D
 	body.color = ranged_color
 	body.scale = Vector2(ranged_body_scale, ranged_body_scale)
