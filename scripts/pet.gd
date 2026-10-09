@@ -106,7 +106,7 @@ func _update_lunge(delta: float) -> void:
 	if global_position.distance_to(spot) < 2.0 or lunge_left <= 0.0:
 		lunge_left = 0.0
 		if global_position.distance_to(spot) < 24.0:
-			lunge_target.take_damage(bite_damage, 0)
+			lunge_target.take_damage(bite_damage, 0, 1.0, 2)
 			body.color = bite_color
 			flash_left = flash_duration
 			pop_left = flash_duration

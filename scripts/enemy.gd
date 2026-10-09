@@ -71,6 +71,16 @@ extends CharacterBody2D
 # read and dodge) and hits for less.
 @export var counter_startup: float = 0.45
 @export var counter_damage: int = 5
+# Floating damage number above the enemy on each hit: rises damage_number_rise px
+# and fades over damage_number_time s. Style (take_damage number_style):
+# 0 = normal hit, 1 = big hit (combo finisher, Q Dash Slash, set shockwave),
+# 2 = small side damage (pet bite, Spark Ring graze).
+@export var damage_number_time: float = 0.5
+@export var damage_number_rise: float = 28.0
+@export var damage_number_sizes: PackedInt32Array = PackedInt32Array([16, 22, 12])
+@export var damage_number_colors: PackedColorArray = PackedColorArray([
+	Color(1, 1, 1, 1), Color(1, 0.85, 0.2, 1), Color(0.65, 0.9, 1, 1),
+])
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -284,8 +294,10 @@ func _apply_hit() -> void:
 
 # direction: 1 = right, -1 = left, 0 = no knockback.
 # knockback_scale: multiplies knockback_distance (the Player's combo finisher pushes further).
-func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) -> void:
+# number_style: look of the floating damage number (see damage_number_sizes).
+func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, number_style: int = 0) -> void:
 	hp -= amount
+	_spawn_damage_number(amount, number_style)
 	hp_label.text = str(hp)
 	print("%s HP: %d" % [name, hp])
 	if hp <= 0:
@@ -313,6 +325,31 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0) 
 		knockback_push = knockback_distance * knockback_scale
 		if not super_armor:
 			counter_ready = true
+
+
+# A one-off Label in the world (not on the enemy, which may die from this hit).
+# Its tween follows time_scale, so it holds still during hitstop.
+func _spawn_damage_number(amount: int, style: int) -> void:
+	if not is_instance_valid(player):
+		return
+	var label := Label.new()
+	label.text = str(amount)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.size = Vector2(60, 30)
+	label.add_theme_font_size_override("font_size", damage_number_sizes[style])
+	label.add_theme_color_override("font_color", damage_number_colors[style])
+	label.add_theme_constant_override("outline_size", 4)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	label.z_index = 20
+	# Above the HP label, nudged sideways so numbers from quick hits don't stack exactly.
+	label.position = global_position + Vector2(-30 + randf_range(-8.0, 8.0), -110)
+	player.get_parent().add_child(label)
+	var tween := label.create_tween()
+	tween.tween_property(label, "position:y", label.position.y - damage_number_rise, damage_number_time) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, damage_number_time * 0.5) \
+		.set_delay(damage_number_time * 0.5)
+	tween.tween_callback(label.queue_free)
 
 
 func _try_drop_loot() -> void:
