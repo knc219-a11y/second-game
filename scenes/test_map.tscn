@@ -248,14 +248,14 @@ color = Color(0.3, 1, 0.55, 0.8)
 polygon = PackedVector2Array(-20, -60, 20, -60, 20, 20, -20, 20)
 
 [node name="Label" type="Label" parent="ExitGate"]
-offset_left = -40.0
+offset_left = -60.0
 offset_top = -100.0
-offset_right = 40.0
+offset_right = 60.0
 offset_bottom = -76.0
 horizontal_alignment = 1
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-text = "TOWN"
+text = "HIDEHOLD"
 
 [node name="Player" parent="." instance=ExtResource("1")]
 position = Vector2(200, 450)
@@ -281,7 +281,7 @@ offset_bottom = 208.0
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "Town   Walk into a gate to start"
+text = "Hidehold   Walk into a gate to start"
 
 [node name="StageBanner" type="Label" parent="Hud"]
 anchors_preset = 10
@@ -293,7 +293,7 @@ horizontal_alignment = 1
 theme_override_constants/outline_size = 10
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 36
-text = "Town"
+text = "Hidehold"
 
 [node name="Fade" type="ColorRect" parent="Hud"]
 anchors_preset = 15
