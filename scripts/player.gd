@@ -124,10 +124,10 @@ extends CharacterBody2D
 # shake_duration. It runs on game time, so it holds still during hitstop and
 # never outlives the freeze. A stronger shake replaces a weaker one; weaker ones
 # don't cut a stronger one short.
-@export var shake_finisher: float = 3.0
-@export var shake_shockwave: float = 5.0
-@export var shake_full_set: float = 7.0
-@export var shake_hurt: float = 4.0
+@export var shake_finisher: float = 1.5
+@export var shake_shockwave: float = 2.5
+@export var shake_full_set: float = 3.5
+@export var shake_hurt: float = 2.0
 @export var shake_duration: float = 0.15
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
