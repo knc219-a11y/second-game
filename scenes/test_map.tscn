@@ -234,6 +234,28 @@ shape = SubResource("Shape_Rock4")
 color = Color(0.5, 0.45, 0.4, 1)
 polygon = PackedVector2Array(-30.0, -30.0, 30.0, -30.0, 30.0, 30.0, -30.0, 30.0)
 
+[node name="ExitGate" type="Node2D" parent="."]
+visible = false
+position = Vector2(1545, 450)
+
+[node name="Glow" type="Polygon2D" parent="ExitGate"]
+color = Color(0.3, 1, 0.55, 0.35)
+polygon = PackedVector2Array(-34, -70, 34, -70, 34, 30, -34, 30)
+
+[node name="Door" type="Polygon2D" parent="ExitGate"]
+color = Color(0.3, 1, 0.55, 0.8)
+polygon = PackedVector2Array(-20, -60, 20, -60, 20, 20, -20, 20)
+
+[node name="Label" type="Label" parent="ExitGate"]
+offset_left = -40.0
+offset_top = -100.0
+offset_right = 40.0
+offset_bottom = -76.0
+horizontal_alignment = 1
+theme_override_constants/outline_size = 6
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+text = "EXIT"
+
 [node name="Player" parent="." instance=ExtResource("1")]
 position = Vector2(200, 450)
 
@@ -258,4 +280,25 @@ offset_bottom = 208.0
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "Kills: 0   Enemies at once: 3"
+text = "Stage 1   Enemies left: 3"
+
+[node name="StageBanner" type="Label" parent="Hud"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 230.0
+offset_bottom = 290.0
+grow_horizontal = 2
+horizontal_alignment = 1
+theme_override_constants/outline_size = 10
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 44
+text = "Stage 1"
+
+[node name="Fade" type="ColorRect" parent="Hud"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0)
