@@ -98,7 +98,7 @@ extends CharacterBody2D
 @export var full_set_radius: float = 170.0
 @export var full_set_damage: int = 10
 @export var full_set_color: Color = Color(1, 0.55, 0.2, 1)
-# Pets, one entry per kind (pet_kind 1, 2). Each follows the Player, bites
+# Pets, one entry per kind (pet_kind 1, 2, 3). Each follows the Player, bites
 # nearby enemies for a little damage (see pet.gd) and lends a small form of its
 # monster's passive:
 # 1 Brute Cub (tough enemies, rarely, test_map tough_pet_drop_chance): while the
@@ -107,17 +107,21 @@ extends CharacterBody2D
 # 2 Red Pup (normal enemies, rarely, enemy.pet_drop_chance): bites back - when
 #   an enemy hits the Player, the pup bites right away (its bite cooldown is
 #   skipped), like the normal enemy's counter.
+# 3 Spit Imp (ranged enemies, rarely, test_map ranged_pet_drop_chance): keeps
+#   its distance like its monster - instead of dashing in to bite, it spits a
+#   small shot (projectile.tscn) at the nearest enemy within a longer range.
 # The two bite differently so they read apart: the Cub chomps rarely but harder
-# with a big pop, the Pup nibbles often for less (both about 2 damage a second).
+# with a big pop, the Pup nibbles often for less, the Imp spits from afar (all
+# about 2 damage a second).
 # The Pup is rose, not the normal enemy's red, so it doesn't read as an enemy.
 # One pet at a time: walking over a different pet swaps to it. R resets it.
-@export var pet_names: Array[String] = ["Brute Cub", "Red Pup"]
-@export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(1, 0.6, 0.72, 1)]
-@export var pet_bite_damage: Array[int] = [5, 2]
-@export var pet_bite_cooldown: Array[float] = [2.5, 0.9]
+@export var pet_names: Array[String] = ["Brute Cub", "Red Pup", "Spit Imp"]
+@export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(1, 0.6, 0.72, 1), Color(0.75, 0.62, 1, 1)]
+@export var pet_bite_damage: Array[int] = [5, 2, 4]
+@export var pet_bite_cooldown: Array[float] = [2.5, 0.9, 2.0]
 # Size the pet swells to on a bite (pet.gd bite_pop).
-@export var pet_bite_pop: Array[float] = [1.6, 1.15]
-@export var pet_passive_text: Array[String] = ["no push while attacking", "bites back when you're hit"]
+@export var pet_bite_pop: Array[float] = [1.6, 1.15, 1.3]
+@export var pet_passive_text: Array[String] = ["no push while attacking", "bites back when you're hit", "keeps its distance"]
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # Screen shake on big moments: the combo finisher landing, the set shockwave
 # (bigger with the full set) and the Player getting hit. The camera offset jumps
@@ -714,11 +718,12 @@ func equip_pet(kind: int) -> void:
 	pet.bite_damage = pet_bite_damage[kind - 1]
 	pet.bite_cooldown = pet_bite_cooldown[kind - 1]
 	pet.bite_pop = pet_bite_pop[kind - 1]
+	pet.spits = kind == 3
 	# Beside the Player in the scene; pet.tscn's z_index draws it on top so the
 	# bite dash is not hidden behind the Player or the enemy it bites.
 	get_parent().add_child(pet)
 	print("Picked up pet %s" % pet_names[kind - 1])
-	pet_label.text = "Pet: %s (%s, bites %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], pet.bite_damage, pet.bite_cooldown]
+	pet_label.text = "Pet: %s (%s, %s %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], "spits" if pet.spits else "bites", pet.bite_damage, pet.bite_cooldown]
 
 
 # Returns false at full HP (or dead) so the orb stays on the ground.
