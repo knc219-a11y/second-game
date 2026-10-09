@@ -5,8 +5,10 @@ extends Node2D
 # (on the side away from facing). The passives live in player.gd take_damage;
 # the Brute Cub flashes when it blocks a push. It also helps a little in a fight:
 # every bite_cooldown s it dashes at the nearest enemy within bite_range of the
-# Player and bites for bite_damage. The bite never pushes the enemy or cancels
-# its swing, so it only chips (about 2 damage a second next to the Player's ~30).
+# Player and bites for bite_damage (player.gd sets damage, cooldown and pop per
+# pet). The bite never pushes the enemy or cancels its swing, so it only chips
+# (about 2 damage a second next to the Player's ~30). The green AllyMark under
+# its feet tells it apart from enemies.
 @export var follow_offset: Vector2 = Vector2(36, -6)
 # Higher = catches up faster (exponential smoothing per second).
 @export var follow_speed: float = 6.0
@@ -19,12 +21,15 @@ extends Node2D
 @export var lunge_speed: float = 600.0
 @export var lunge_max_time: float = 0.25
 @export var bite_color: Color = Color(1, 1, 1, 1)
+# On a bite the pet swells to this size and shrinks back over flash_duration.
+@export var bite_pop: float = 1.0
 
 var player: Node2D
 var flash_left: float = 0.0
 var bite_left: float = 0.0
 var lunge_target: Node2D = null
 var lunge_left: float = 0.0
+var pop_left: float = 0.0
 
 @onready var visual: Node2D = $Visual
 @onready var body: Polygon2D = $Visual/Body
@@ -52,6 +57,11 @@ func _physics_process(delta: float) -> void:
 		flash_left -= delta
 		if flash_left <= 0.0:
 			body.color = base_color
+	var size := 1.0
+	if pop_left > 0.0:
+		pop_left -= delta
+		size = lerpf(1.0, bite_pop, maxf(pop_left, 0.0) / flash_duration)
+	visual.scale = Vector2(signf(visual.scale.x) * size, size)
 
 
 func flash() -> void:
@@ -99,4 +109,5 @@ func _update_lunge(delta: float) -> void:
 			lunge_target.take_damage(bite_damage, 0)
 			body.color = bite_color
 			flash_left = flash_duration
+			pop_left = flash_duration
 			print("Pet bit %s for %d" % [lunge_target.name, bite_damage])

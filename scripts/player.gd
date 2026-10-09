@@ -74,9 +74,16 @@ extends CharacterBody2D
 # 2 Red Pup (normal enemies, rarely, enemy.pet_drop_chance): bites back - when
 #   an enemy hits the Player, the pup bites right away (its bite cooldown is
 #   skipped), like the normal enemy's counter.
+# The two bite differently so they read apart: the Cub chomps rarely but harder
+# with a big pop, the Pup nibbles often for less (both about 2 damage a second).
+# The Pup is rose, not the normal enemy's red, so it doesn't read as an enemy.
 # One pet at a time: walking over a different pet swaps to it. R resets it.
 @export var pet_names: Array[String] = ["Brute Cub", "Red Pup"]
-@export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(0.85, 0.3, 0.3, 1)]
+@export var pet_colors: Array[Color] = [Color(0.6, 0.18, 0.28, 1), Color(1, 0.6, 0.72, 1)]
+@export var pet_bite_damage: Array[int] = [5, 2]
+@export var pet_bite_cooldown: Array[float] = [2.5, 0.9]
+# Size the pet swells to on a bite (pet.gd bite_pop).
+@export var pet_bite_pop: Array[float] = [1.6, 1.15]
 @export var pet_passive_text: Array[String] = ["no push while attacking", "bites back when you're hit"]
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
@@ -404,11 +411,14 @@ func equip_pet(kind: int) -> void:
 	pet_kind = kind
 	# Before add_child so pet.gd's base_color picks it up.
 	pet.get_node("Visual/Body").color = pet_colors[kind - 1]
+	pet.bite_damage = pet_bite_damage[kind - 1]
+	pet.bite_cooldown = pet_bite_cooldown[kind - 1]
+	pet.bite_pop = pet_bite_pop[kind - 1]
 	# Beside the Player in the scene; pet.tscn's z_index draws it on top so the
 	# bite dash is not hidden behind the Player or the enemy it bites.
 	get_parent().add_child(pet)
 	print("Picked up pet %s" % pet_names[kind - 1])
-	pet_label.text = "Pet: %s (%s, bites %d)" % [pet_names[kind - 1], pet_passive_text[kind - 1], pet.bite_damage]
+	pet_label.text = "Pet: %s (%s, bites %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], pet.bite_damage, pet.bite_cooldown]
 
 
 func _start_hitstop(duration: float) -> void:
