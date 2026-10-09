@@ -50,6 +50,14 @@ const LOOT_SCRIPT := preload("res://scripts/loot.gd")
 @export var fade_time: float = 0.3
 
 var stage: int = 1
+# Stage grade from hits taken (player.gd hits_taken) during the stage: S up to
+# grade_s_hits, A up to grade_a_hits, else B. Shown on the clear banner; the
+# best grade per stage is kept in the save file (player.gd SAVE_PATH, section
+# "grades", key "stage_N", N = 1..STAGES.size()).
+@export var grade_s_hits: int = 0
+@export var grade_a_hits: int = 2
+const GRADE_COLORS := {"S": Color(1, 0.85, 0.2, 1), "A": Color(0.5, 0.85, 1, 1), "B": Color(1, 1, 1, 1)}
+@export var clear_banner_time: float = 2.5
 var stage_cleared: bool = false
 var moving_on: bool = false
 
@@ -129,6 +137,7 @@ func _ready() -> void:
 
 func _spawn_stage() -> void:
 	stage_cleared = false
+	player.hits_taken = 0
 	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()])
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
@@ -169,11 +178,11 @@ func _build_rocks(boxes: Array) -> void:
 		obstacles.add_child(rock)
 
 
-func _show_banner(text: String) -> void:
+func _show_banner(text: String, color: Color = Color(1, 1, 1, 1), hold: float = 1.2) -> void:
 	stage_banner.text = text
-	stage_banner.modulate = Color(1, 1, 1, 1)
+	stage_banner.modulate = color
 	var tween := stage_banner.create_tween()
-	tween.tween_interval(1.2)
+	tween.tween_interval(hold)
 	tween.tween_property(stage_banner, "modulate", Color(1, 1, 1, 0), 0.5)
 
 
@@ -221,14 +230,31 @@ func _update_kill_label() -> void:
 
 func _clear_stage() -> void:
 	stage_cleared = true
-	print("Stage %d clear" % stage)
-	_show_banner("Stage %d Clear!" % stage)
+	var hits: int = player.hits_taken
+	var grade := "S" if hits <= grade_s_hits else ("A" if hits <= grade_a_hits else "B")
+	var best := _save_best_grade(grade)
+	print("Stage %d clear: grade %s (%d hits), best %s" % [stage, grade, hits, best])
+	_show_banner("Stage %d Clear!\nGrade %s  (%d hits)   Best %s" % [stage, grade, hits, best], GRADE_COLORS[grade], clear_banner_time)
 	if _is_last_stage():
 		kill_label.text = "Stage %d   Clear! Dungeon on the right ->" % stage
 	else:
 		kill_label.text = "Stage %d   Clear! Exit on the right ->" % stage
 	exit_gate.position = exit_position
 	exit_gate.visible = true
+
+
+# Keeps the better of the saved and the new grade ("S" > "A" > "B") for this
+# stage and returns it.
+func _save_best_grade(grade: String) -> String:
+	var cfg := ConfigFile.new()
+	cfg.load(player.SAVE_PATH)
+	var key := "stage_%d" % ((stage - 1) % STAGES.size() + 1)
+	var best: String = cfg.get_value("grades", key, "")
+	if best == "" or "SAB".find(grade) < "SAB".find(best):
+		best = grade
+		cfg.set_value("grades", key, best)
+		cfg.save(player.SAVE_PATH)
+	return best
 
 
 func _is_last_stage() -> bool:

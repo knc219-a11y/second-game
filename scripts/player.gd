@@ -183,6 +183,8 @@ const WORLD_LAYER := 1
 # one section per kind of progress ("gear" now; stage grades can get their own
 # section later). Delete the file to start fresh.
 const SAVE_PATH := "user://save.cfg"
+# Hits that got through (rolls and other i-frames don't count) since test_map.gd last reset it.
+var hits_taken: int = 0
 const ENEMY_BODY_LAYER := 4
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
@@ -971,6 +973,8 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	# Roll i-frames: the hit is dodged (the enemy's swing still counts as spent).
 	if is_dead or is_invincible:
 		return
+	# Counted for the stage grade (test_map.gd resets it each stage); dodged hits don't count.
+	hits_taken += 1
 	if has_armor:
 		# Never below 1 so armor can't make a hit free.
 		amount = maxi(amount - armor_damage_reduction, 1)
