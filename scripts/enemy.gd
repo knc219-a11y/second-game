@@ -60,6 +60,10 @@ extends CharacterBody2D
 # yellow normal wind-up) instead of telegraph_color. Not used with
 # super_armor (the tough variant keeps its own rule).
 @export var counter_color: Color = Color(1, 0.3, 0.9, 1)
+# Kept gentle for now: a counter winds up longer than a normal swing (easier to
+# read and dodge) and hits for less.
+@export var counter_startup: float = 0.45
+@export var counter_damage: int = 5
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -214,12 +218,13 @@ func _start_attack() -> void:
 
 func _update_attack(delta: float) -> void:
 	attack_time += delta
-	if attack_time < attack_startup:
+	var startup := counter_startup if is_counter else attack_startup
+	if attack_time < startup:
 		_set_attack_phase(AttackPhase.STARTUP)
-	elif attack_time < attack_startup + attack_active:
+	elif attack_time < startup + attack_active:
 		_set_attack_phase(AttackPhase.ACTIVE)
 		_apply_hit()
-	elif attack_time < attack_startup + attack_active + attack_recovery:
+	elif attack_time < startup + attack_active + attack_recovery:
 		_set_attack_phase(AttackPhase.RECOVERY)
 	else:
 		_end_attack()
@@ -262,7 +267,7 @@ func _apply_hit() -> void:
 		var target := area.get_parent()
 		if target.has_method("take_damage"):
 			# Push the Player the way the swing faces (left/right only).
-			target.take_damage(attack_damage, int(attack_pivot.scale.x))
+			target.take_damage(counter_damage if is_counter else attack_damage, int(attack_pivot.scale.x))
 			attack_landed = true
 			return
 
