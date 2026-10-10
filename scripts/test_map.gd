@@ -141,9 +141,15 @@ const BACKDROP_HAZE_Y := [-700.0, 450.0, 1300.0]
 # Fog band over the gorge: clear at the plateau edge, thick this far out.
 const BACKDROP_FOG_DEPTH := 170.0
 const BACKDROP_FOG_ALPHA := 0.75
-# The plateau's cut lip (s1_ground darkened), ragged and fading into the fog.
+# The plateau's broken edge (_add_cliff_edge): a skin rim from the plain
+# ground tiles over a cliff face of uneven height (min, max px).
 const S1_GROUND_TEX := preload("res://art/stage1/tiles/s1_ground.png")
-const BACKDROP_LIP_SHADE := Color(0.5, 0.42, 0.41)
+const BG_FACE_TEX := preload("res://art/stage1/bg/s1_bg_cliff_face.png")
+const BACKDROP_RIM_SHADE := Color(0.92, 0.86, 0.84)
+const BACKDROP_FACE_SHADE := Color(0.78, 0.7, 0.69)
+const BACKDROP_FACE_DEPTH := Vector2(70, 150)
+# Fog over the gorge starts this far past the walls (so the face shows first).
+const BACKDROP_FOG_START := 40.0
 # Stage 1 camera stops this far past the walls (it showed up to 640px of
 # outside before): the backdrop frames the plateau instead of filling half the screen.
 const STAGE1_CAMERA_LIMITS := Rect2(-200, -300, 2000, 1400)
@@ -404,16 +410,16 @@ func _build_backdrop() -> void:
 	move_child(backdrop_front, grid.get_index() + 1)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GROUND_SEED
-	# The lip repeats the plain ground tiles only (no red veins on the face).
 	lip_texture = ImageTexture.create_from_image(S1_GROUND_TEX.get_image().get_region(Rect2i(0, 0, 256, 64)))
-	# The lip on all three open sides (the bottom one also covers the floor
-	# tiles that run past y 900), then fog over it so the face sinks into the gorge.
-	_add_lip(Vector2(1600, 900), Vector2(-1, 0), Vector2(0, 1), 1600.0, 80.0, rng)
-	_add_lip(Vector2(0, 0), Vector2(0, 1), Vector2(-1, 0), 900.0, 26.0, rng)
-	_add_lip(Vector2(1600, 900), Vector2(0, -1), Vector2(1, 0), 900.0, 26.0, rng)
-	_add_fog(Vector2(0, 900), Vector2(0, 1), Vector2(1, 0), 1600.0)
-	_add_fog(Vector2(0, 0), Vector2(-1, 0), Vector2(0, 1), 900.0)
-	_add_fog(Vector2(1600, 0), Vector2(1, 0), Vector2(0, 1), 900.0)
+	# A broken cliff edge on all three open sides (the bottom one also covers
+	# the floor tiles that run past y 900), then fog over it so the face sinks
+	# into the gorge. The rim repeats the plain ground tiles only (no red veins).
+	# The bottom face runs on past both corners and draws last, so it wraps
+	# over the feet of the side faces.
+	_add_cliff_edge(Vector2(0, 0), Vector2(0, 1), Vector2(-1, 0), 900.0, 40.0, rng)
+	_add_cliff_edge(Vector2(1600, 900), Vector2(0, -1), Vector2(1, 0), 900.0, 40.0, rng)
+	_add_cliff_edge(Vector2(1600, 900), Vector2(-1, 0), Vector2(0, 1), 1600.0, 170.0, rng)
+	_add_fog()
 	# Soft shade on the floor at the cliff's foot, then the cliffs.
 	var shade := Polygon2D.new()
 	shade.polygon = PackedVector2Array([Vector2(-200, 0), Vector2(1800, 0), Vector2(1800, 90), Vector2(-200, 90)])
@@ -435,55 +441,125 @@ func _haze_at(y: float) -> Color:
 	return BACKDROP_HAZE[2]
 
 
-# A fog band from the edge line (start, running along `along` for `length`)
-# out in direction `out`: clear at the edge, thick at BACKDROP_FOG_DEPTH.
-func _add_fog(start: Vector2, out: Vector2, along: Vector2, length: float) -> void:
-	var a := start - along * 200.0
-	var b := start + along * (length + 200.0)
-	var far := out * BACKDROP_FOG_DEPTH
-	var deep := out * 600.0
-	for band in [[Vector2.ZERO, far, 0.0, BACKDROP_FOG_ALPHA], [far, deep, BACKDROP_FOG_ALPHA, BACKDROP_FOG_ALPHA]]:
+# Fog over the gorge on the left, right and bottom: a ring with mitred
+# corners (so the bands don't stack into a darker box there), clear
+# BACKDROP_FOG_START past the walls and thick BACKDROP_FOG_DEPTH further out,
+# then solid beyond. Its top end hides behind the top cliffs.
+func _add_fog() -> void:
+	var i0 := Vector2(-BACKDROP_FOG_START, -200)
+	var i1 := Vector2(1600 + BACKDROP_FOG_START, 900 + BACKDROP_FOG_START)
+	var o0 := i0 - Vector2(BACKDROP_FOG_DEPTH, 0)
+	var o1 := i1 + Vector2(BACKDROP_FOG_DEPTH, BACKDROP_FOG_DEPTH)
+	var inner := [i0, Vector2(i0.x, i1.y), i1, Vector2(i1.x, i0.y)]
+	var outer := [o0, Vector2(o0.x, o1.y), o1, Vector2(o1.x, o0.y)]
+	for side in 3:
+		var pts := [inner[side], inner[side + 1], outer[side + 1], outer[side]]
+		var cols := PackedColorArray()
+		for k in 4:
+			var c := _haze_at(pts[k].y)
+			c.a = 0.0 if k < 2 else BACKDROP_FOG_ALPHA
+			cols.append(c)
 		var fog := Polygon2D.new()
-		fog.polygon = PackedVector2Array([a + band[0], b + band[0], b + band[1], a + band[1]])
-		var c0 := _haze_at((a + band[0]).y)
-		var c1 := _haze_at((a + band[1]).y)
-		c0.a = band[2]
-		c1.a = band[3]
-		fog.vertex_colors = PackedColorArray([c0, c0, c1, c1])
+		fog.polygon = PackedVector2Array(pts)
+		fog.vertex_colors = cols
 		backdrop_front.add_child(fog)
+	for r in [Rect2(-1600, -200, o0.x + 1600, 2600), Rect2(o1.x, -200, 1600, 2600), Rect2(o0.x, o1.y, o1.x - o0.x, 1200)]:
+		var solid := Polygon2D.new()
+		solid.polygon = PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		var top := _haze_at(r.position.y)
+		var low := _haze_at(r.end.y)
+		top.a = BACKDROP_FOG_ALPHA
+		low.a = BACKDROP_FOG_ALPHA
+		solid.vertex_colors = PackedColorArray([top, top, low, low])
+		backdrop_front.add_child(solid)
 
 
-# The plateau's cut face: from `start` along `along` for `length`, reaching out
-# (direction `out`) a ragged depth around `depth`, ground texture shaded
-# darker toward its far edge (the fog drawn over it does the fading).
-func _add_lip(start: Vector2, along: Vector2, out: Vector2, length: float, depth: float, rng: RandomNumberGenerator) -> void:
-	var pts := PackedVector2Array()
-	var cols := PackedColorArray()
-	var edge := BACKDROP_LIP_SHADE
-	var tip := BACKDROP_LIP_SHADE.darkened(0.5)
-	# Inner edge (on the floor line), then the ragged outer edge back.
-	var d := -24.0
-	while d < length + 24.0:
-		pts.append(start + along * d)
-		cols.append(edge)
-		d += 64.0
-	pts.append(start + along * (length + 24.0))
-	cols.append(edge)
-	d = length + 24.0
-	while d > -24.0:
-		var reach := depth * rng.randf_range(0.85, 1.3)
-		pts.append(start + along * d + out * reach)
-		cols.append(tip)
-		d -= rng.randf_range(28.0, 60.0)
-	pts.append(start + along * -24.0 + out * depth)
-	cols.append(tip)
-	var lip := Polygon2D.new()
-	lip.polygon = pts
-	lip.vertex_colors = cols
-	lip.texture = lip_texture
-	lip.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	lip.uv = pts
-	backdrop_front.add_child(lip)
+# The plateau's broken edge, from `start` along `along` for `length`, falling
+# away in direction `out`. Rows: a ragged skin rim (ground texture) that bites
+# up to ~18px into the floor, then a cliff face (furrows, fibres and bone
+# spurs from s1_bg_cliff_face.png) of uneven height that darkens toward its
+# foot in the fog. Only the look is ragged: the straight walls still collide.
+func _add_cliff_edge(start: Vector2, along: Vector2, out: Vector2, length: float, extend: float, rng: RandomNumberGenerator) -> void:
+	var waves := []
+	for k in 3:
+		waves.append([rng.randf_range(0.004, 0.02) * (k + 1), rng.randf_range(0, TAU)])
+	var rim_v := []
+	var face_v := []
+	var d := -extend
+	while d <= length + extend:
+		var n0 := 0.0
+		var n1 := 0.0
+		for w in waves:
+			n0 += sin(d * w[0] + w[1])
+			n1 += sin(d * w[0] * 1.7 + w[1] * 2.0)
+		n0 = clampf(n0 / 3.0 * 0.5 + 0.5 + rng.randf_range(-0.12, 0.12), 0.0, 1.0)
+		n1 = clampf(n1 / 3.0 * 0.5 + 0.5 + rng.randf_range(-0.15, 0.15), 0.0, 1.0)
+		var top := start + along * d - out * (18.0 * n0)
+		var rim := top + out * rng.randf_range(8.0, 14.0)
+		var bottom := rim + out * lerpf(BACKDROP_FACE_DEPTH.x, BACKDROP_FACE_DEPTH.y, n1)
+		rim_v.append([top, rim, d])
+		face_v.append([rim, bottom, d])
+		d += rng.randf_range(14.0, 26.0)
+	var mid_shade := BACKDROP_FACE_SHADE
+	var top_shade := BACKDROP_FACE_SHADE.darkened(0.4)
+	# Solid to its ragged foot (a fade would show the floor tiles that run
+	# past y 900); the fog over it does the dissolving.
+	var low_shade := BACKDROP_FACE_SHADE.darkened(0.62)
+	var face_h := float(BG_FACE_TEX.get_height())
+	var rim_mesh := []
+	var face_mesh := []
+	for row in rim_v:
+		# The rim stops at the floor's corners; the face runs on past them.
+		var past: float = maxf(-row[2], row[2] - length)
+		var fade := clampf(1.0 - past / 16.0, 0.0, 1.0)
+		var rim_top := BACKDROP_RIM_SHADE
+		var rim_low := BACKDROP_RIM_SHADE.darkened(0.25)
+		rim_top.a = fade
+		rim_low.a = fade
+		rim_mesh.append([row[0], Vector2(row[2], 0), rim_top])
+		rim_mesh.append([row[1], Vector2(row[2], 14), rim_low])
+	var taper := minf(70.0, extend)
+	for row in face_v:
+		var p0: Vector2 = row[0]
+		var p1: Vector2 = row[1]
+		# Past the floor's corners the face thins out instead of ending on a cut.
+		var past: float = maxf(-row[2], row[2] - length)
+		var a := clampf((extend - past) / taper, 0.0, 1.0) if past > 0.0 else 1.0
+		var shades := [top_shade, mid_shade, low_shade]
+		for k in 3:
+			shades[k] = Color(shades[k], shades[k].a * a)
+		face_mesh.append([p0, Vector2(row[2], 0), shades[0]])
+		face_mesh.append([p0.lerp(p1, 0.25), Vector2(row[2], face_h * 0.25), shades[1]])
+		face_mesh.append([p1, Vector2(row[2], face_h), shades[2]])
+	_add_strip(face_mesh, 3, BG_FACE_TEX)
+	_add_strip(rim_mesh, 2, lip_texture)
+
+
+# A textured strip from columns of `rows` vertices [position, uv, colour].
+func _add_strip(verts: Array, rows: int, tex: Texture2D) -> void:
+	var pos := PackedVector2Array()
+	var uv := PackedVector2Array()
+	var col := PackedColorArray()
+	var size := tex.get_size()
+	for c in verts.size() / rows - 1:
+		for r in rows - 1:
+			var q := [verts[c * rows + r], verts[(c + 1) * rows + r], verts[(c + 1) * rows + r + 1], verts[c * rows + r + 1]]
+			for i in [0, 1, 2, 0, 2, 3]:
+				pos.append(q[i][0])
+				uv.append(q[i][1] / size)
+				col.append(q[i][2])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = pos
+	arrays[Mesh.ARRAY_TEX_UV] = uv
+	arrays[Mesh.ARRAY_COLOR] = col
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var node := MeshInstance2D.new()
+	node.mesh = mesh
+	node.texture = tex
+	node.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	backdrop_front.add_child(node)
 
 
 func _backdrop_sprite(piece: Array) -> Sprite2D:
