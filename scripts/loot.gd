@@ -13,6 +13,14 @@ extends Area2D
 @export var is_heal: bool = false
 # Ring drop instead: shows the Ring shape.
 @export var is_ring: bool = false
+# Painted Stage 1 drop art (32px, drawn at 1:1) in place of the placeholder
+# shapes: the armor as a hardened husk shard and the Scab Pup (pet kind 2) as a
+# stabilized regen core in every stage, since they belong to the item; the
+# ichor drop as regen fiber only in Stage 1 (test_map.is_stage_one), since the
+# heal is shared by every stage and keeps its green orb elsewhere.
+const ARMOR_ICON := preload("res://art/stage1/drops/s1_drop_husk_shard.png")
+const SCAB_PUP_ICON := preload("res://art/stage1/drops/s1_drop_regen_core.png")
+const STAGE1_HEAL_ICON := preload("res://art/stage1/drops/s1_drop_regen_fiber.png")
 
 
 func _ready() -> void:
@@ -25,6 +33,26 @@ func _ready() -> void:
 	$Visual/Orb.visible = is_heal
 	$Visual/Ring.visible = is_ring
 	$Visual/Glow.visible = not is_heal
+	var icon: Texture2D = null
+	var shape: Node2D = null
+	if is_armor:
+		icon = ARMOR_ICON
+		shape = $Visual/Armor
+	elif is_pet and tier == 2:
+		icon = SCAB_PUP_ICON
+		shape = $Visual/Pet
+	elif is_heal and _in_stage_one():
+		icon = STAGE1_HEAL_ICON
+		shape = $Visual/Orb
+	if icon != null:
+		$Visual/Icon.texture = icon
+		$Visual/Icon.visible = true
+		shape.visible = false
+
+
+func _in_stage_one() -> bool:
+	var map := get_tree().current_scene
+	return map != null and map.has_method("is_stage_one") and map.is_stage_one()
 
 
 func _physics_process(_delta: float) -> void:

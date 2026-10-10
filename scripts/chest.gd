@@ -38,6 +38,10 @@ func item_name() -> String:
 			return player.armor_name if player else "Armor"
 		"ring":
 			return player.ring_name if player else "Ring"
+	# The heal shows as Stage 1's regen fiber there (loot.gd draws it the same way).
+	var map := get_tree().current_scene
+	if map != null and map.has_method("is_stage_one") and map.is_stage_one():
+		return "Regen Fiber"
 	return "Ichor Drop"
 
 

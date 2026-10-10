@@ -513,6 +513,12 @@ func _build_rocks(boxes: Array, color: Color = Color.WHITE) -> void:
 		obstacles.add_child(rock)
 
 
+# Stage 1 itself (not the town or the dungeon): loot.gd and chest.gd show the
+# Stage 1 regen fiber art and name for the shared heal drop here.
+func is_stage_one() -> bool:
+	return stage == 1 and not in_hub and not endless_mode
+
+
 func _stage_name() -> String:
 	return STAGE_NAMES[(stage - 1) % STAGE_NAMES.size()]
 
