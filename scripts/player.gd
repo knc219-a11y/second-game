@@ -129,10 +129,11 @@ extends CharacterBody2D
 # Only the Scab Pup (Stage 1 skin lineage) has one so far.
 @export var pet_sprite_sheets: Array[Texture2D] = [null, preload("res://art/stage1/pets/s1_scab_pup.png"), null]
 # Player art: a strip of right-facing frames sprite_frame_size each, origin
-# at the feet centre (sprite_origin). Frames 0-1 idle, 2-5 walk. It replaces the
+# at the feet centre (sprite_origin). Frames 0-1 idle, 2-5 walk, 6-8 basic
+# attack startup / active / recovery (one pose per AttackPhase). It replaces the
 # placeholder Body, which stays hidden but keeps holding the flash colour that
-# tints the sprite. Left is the existing Visual.scale.x flip. Attacks, dash,
-# whirl and hurt show idle frame 0 (no attack art yet). null keeps the box.
+# tints the sprite. Left is the existing Visual.scale.x flip. Dash, whirl
+# and hurt show idle frame 0 (no art for them yet). null keeps the box.
 @export var sprite_sheet: Texture2D = preload("res://art/player/player.png")
 @export var sprite_frame_size: Vector2 = Vector2(96, 72)
 @export var sprite_origin: Vector2 = Vector2(48, 68)
@@ -1055,14 +1056,20 @@ func _setup_sprite() -> void:
 	$Visual/FacingMarker.visible = false
 
 
-# Idle (2 frames) when standing, walk (4 frames) when moving, idle frame 0
-# while any attack or skill runs. Body colour (hurt/heal flash, dead) is laid over it.
+# Idle (2 frames) when standing, walk (4 frames) when moving, the basic attack
+# pose for the current AttackPhase, idle frame 0 while a skill runs or the
+# Player is pushed back. Body colour (hurt/heal flash, dead) is laid over it.
 func _update_sprite(delta: float) -> void:
 	sprite_anim_time += delta
 	var frame := 0
-	var busy := attack_phase != AttackPhase.NONE or dash_time_left > 0.0 or whirl_time_left > 0.0 or hurt_knockback_left > 0.0 or is_dead
+	var busy := dash_time_left > 0.0 or whirl_time_left > 0.0 or hurt_knockback_left > 0.0 or is_dead
+	# Facing can turn mid-swing, but the hitbox keeps the facing locked at the
+	# hit's start (attack_pivot), so the swing pose is drawn that way too.
+	sprite.flip_h = not busy and attack_phase != AttackPhase.NONE and int(attack_pivot.scale.x) != facing
 	if busy:
 		frame = 0
+	elif attack_phase != AttackPhase.NONE:
+		frame = 5 + int(attack_phase)
 	elif roll_time_left <= 0.0 and velocity.length() > 10.0:
 		frame = 2 + int(sprite_anim_time * walk_fps) % 4
 	else:
