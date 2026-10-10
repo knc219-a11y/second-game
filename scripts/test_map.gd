@@ -50,6 +50,12 @@ const STAGE_ROCKS := [
 # rocks. Kept dark so the red normal, bone tough and violet ranged
 # enemies, the pet and the drops stay readable on top.
 const STAGE_FLOOR_COLORS := [Color(0.4, 0.3, 0.29, 1), Color(0.2, 0.19, 0.18, 1), Color(0.22, 0.1, 0.11, 1)]
+# Stage 1 rocks wear painted props instead of the flat boxes. Both PNGs have
+# their origin at the bottom centre (offset below); collisions stay the boxes.
+const ROCK_PILE_TEX := preload("res://art/stage1/props/s1_rock_pile.png")
+const ROCK_PILLAR_TEX := preload("res://art/stage1/props/s1_rock_pillar.png")
+const ROCK_PILE_OFFSET := Vector2(-64, -92)
+const ROCK_PILLAR_OFFSET := Vector2(-52, -212)
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -237,6 +243,8 @@ func _spawn_stage() -> void:
 	stage_cleared = false
 	player.hits_taken = 0
 	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()], STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
+	if stage == 1:
+		_dress_rocks()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
@@ -268,6 +276,35 @@ func _show_ground(on: bool) -> void:
 			elif roll < ground_vein_chance + ground_crack_chance:
 				tile = 4 + rng.randi_range(0, 1)
 			ground.set_cell(Vector2i(x, y), 0, Vector2i(tile, 0))
+
+
+# Stage 1: hides each rock's box and stands a prop on the box's bottom edge.
+# Tall boxes get the pillar, wide ones two piles, the rest one pile scaled to
+# the box width.
+func _dress_rocks() -> void:
+	for rock in obstacles.get_children():
+		if not rock.name.begins_with("Rock"):
+			continue
+		var size: Vector2 = ((rock.get_node("CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D).size
+		var bottom := Vector2(0, size.y / 2)
+		(rock.get_node("Visual") as Polygon2D).visible = false
+		if size.y > size.x * 1.5:
+			_add_rock_sprite(rock, ROCK_PILLAR_TEX, ROCK_PILLAR_OFFSET, bottom, 1.0)
+		elif size.x > 150:
+			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(-size.x / 4, 0), 0.85)
+			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(size.x / 4, 0), 0.85)
+		else:
+			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom, minf(1.0, size.x / 96.0))
+
+
+func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> void:
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	sprite.centered = false
+	sprite.offset = offset
+	sprite.position = pos
+	sprite.scale = Vector2(s, s)
+	rock.add_child(sprite)
 
 
 # Replaces every Rock* under Obstacles (walls stay) with the given boxes.
