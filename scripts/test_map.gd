@@ -84,6 +84,13 @@ const TORCH_FOOTPRINT := [Vector2(0, -4), Vector2(18, 10)]
 const TORCH_BOWL := Vector2(3, -93)
 const TORCH_FLAME_FPS := 8.0
 @export var torch_positions: PackedVector2Array = PackedVector2Array([Vector2(1200, 872), Vector2(1462, 876)])
+# Stage 1 prop: a bone-and-hide watchtower (194x304, origin at bottom centre
+# 97,298), the tallest prop, standing at the bottom edge left of the camp. Only
+# a low box across its legs is solid.
+const WATCHTOWER_TEX := preload("res://art/stage1/props/s1_watchtower.png")
+const WATCHTOWER_ORIGIN := Vector2(97, 298)
+const WATCHTOWER_FOOTPRINT := [Vector2(0, -22), Vector2(140, 28)]
+@export var watchtower_position: Vector2 = Vector2(1095, 888)
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -278,6 +285,7 @@ func _spawn_stage() -> void:
 		_build_bone_arch()
 		_build_tent()
 		_build_torches()
+		_build_watchtower()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
@@ -426,6 +434,25 @@ func _build_torches() -> void:
 		tween.tween_property(glow, "scale", Vector2(1.12, 1.12), 0.35 + 0.07 * i)
 		tween.tween_property(glow, "scale", Vector2(0.92, 0.92), 0.4 + 0.05 * i)
 		obstacles.add_child(torch)
+
+
+# Named Rock* so the next _build_rocks clears it with the rocks.
+func _build_watchtower() -> void:
+	var tower := StaticBody2D.new()
+	tower.name = "RockWatchtower"
+	tower.position = watchtower_position
+	var shape := RectangleShape2D.new()
+	shape.size = WATCHTOWER_FOOTPRINT[1]
+	var col := CollisionShape2D.new()
+	col.shape = shape
+	col.position = WATCHTOWER_FOOTPRINT[0]
+	tower.add_child(col)
+	var sprite := Sprite2D.new()
+	sprite.texture = WATCHTOWER_TEX
+	sprite.centered = false
+	sprite.offset = -WATCHTOWER_ORIGIN
+	tower.add_child(sprite)
+	obstacles.add_child(tower)
 
 
 func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> void:
