@@ -36,6 +36,16 @@ extends Node2D
 @export var spit_core_color: Color = Color(0.92, 1, 0.85, 1)
 @export var spit_visual_scale: float = 2.0
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
+# Painted look (Scab Pup only, set by player.gd before add_child): a strip of
+# walk frames sprite_frame_size each, facing right, origin at the feet centre.
+# It replaces the placeholder Body/Eye under Visual (so Visual's flip and bite
+# pop still apply); Body stays hidden but its colour still drives the flash.
+# Frame 0 when standing, all frames in turn while moving.
+@export var sprite_sheet: Texture2D
+@export var sprite_frame_size: Vector2 = Vector2(56, 40)
+@export var sprite_origin: Vector2 = Vector2(28, 37)
+@export var walk_fps: float = 8.0
+const TINT_SHADER := preload("res://scripts/sprite_tint.gdshader")
 
 var player: Node2D
 var flash_left: float = 0.0
@@ -43,6 +53,9 @@ var bite_left: float = 0.0
 var lunge_target: Node2D = null
 var lunge_left: float = 0.0
 var pop_left: float = 0.0
+var sprite: Sprite2D
+var walk_time: float = 0.0
+var last_position: Vector2
 
 @onready var visual: Node2D = $Visual
 @onready var body: Polygon2D = $Visual/Body
@@ -51,6 +64,44 @@ var pop_left: float = 0.0
 
 func _ready() -> void:
 	bite_left = bite_cooldown
+	last_position = position
+	if sprite_sheet:
+		_setup_sprite()
+
+
+func _setup_sprite() -> void:
+	sprite = Sprite2D.new()
+	sprite.name = "Sprite"
+	sprite.texture = sprite_sheet
+	sprite.hframes = int(sprite_sheet.get_width() / sprite_frame_size.x)
+	sprite.centered = false
+	sprite.offset = -sprite_origin
+	var mat := ShaderMaterial.new()
+	mat.shader = TINT_SHADER
+	sprite.material = mat
+	visual.add_child(sprite)
+	body.visible = false
+	$Visual/Eye.visible = false
+
+
+# Body colour (base, block flash, bite); with a sprite, anything but the base
+# colour is laid over it.
+func _paint(c: Color) -> void:
+	body.color = c
+	if sprite:
+		sprite.material.set_shader_parameter("tint", Color(c, 0.0 if c == base_color else 0.6))
+
+
+func _update_sprite(delta: float) -> void:
+	if sprite == null:
+		return
+	if position.distance_to(last_position) > 20.0 * delta:
+		walk_time += delta
+		sprite.frame = int(walk_time * walk_fps) % sprite.hframes
+	else:
+		walk_time = 0.0
+		sprite.frame = 0
+	last_position = position
 
 
 func _physics_process(delta: float) -> void:
@@ -69,16 +120,17 @@ func _physics_process(delta: float) -> void:
 	if flash_left > 0.0:
 		flash_left -= delta
 		if flash_left <= 0.0:
-			body.color = base_color
+			_paint(base_color)
 	var size := 1.0
 	if pop_left > 0.0:
 		pop_left -= delta
 		size = lerpf(1.0, bite_pop, maxf(pop_left, 0.0) / flash_duration)
 	visual.scale = Vector2(signf(visual.scale.x) * size, size)
+	_update_sprite(delta)
 
 
 func flash() -> void:
-	body.color = flash_color
+	_paint(flash_color)
 	flash_left = flash_duration
 
 
@@ -123,7 +175,7 @@ func _update_lunge(delta: float) -> void:
 		lunge_left = 0.0
 		if global_position.distance_to(spot) < 24.0:
 			lunge_target.take_damage(bite_damage, 0, 1.0, 2)
-			body.color = bite_color
+			_paint(bite_color)
 			flash_left = flash_duration
 			pop_left = flash_duration
 			print("Pet bit %s for %d" % [lunge_target.name, bite_damage])
@@ -146,7 +198,7 @@ func _spit(target: Node2D) -> void:
 	for part in ["Glow", "Core", "Shadow"]:
 		shot.get_node(part).scale = Vector2(spit_visual_scale, spit_visual_scale)
 	get_parent().add_child(shot)
-	body.color = bite_color
+	_paint(bite_color)
 	flash_left = flash_duration
 	pop_left = flash_duration
 	print("Pet spat at %s" % target.name)
