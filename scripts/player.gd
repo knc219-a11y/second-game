@@ -125,6 +125,9 @@ extends CharacterBody2D
 # Size the pet swells to on a bite (pet.gd bite_pop).
 @export var pet_bite_pop: Array[float] = [1.6, 1.15, 1.3]
 @export var pet_passive_text: Array[String] = ["no push while attacking", "bites back when you're hit", "keeps its distance"]
+# Painted look per pet (pet.gd sprite_sheet); null keeps the placeholder shape.
+# Only the Scab Pup (Stage 1 skin lineage) has one so far.
+@export var pet_sprite_sheets: Array[Texture2D] = [null, preload("res://art/stage1/pets/s1_scab_pup.png"), null]
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # Screen shake on big moments: the combo finisher landing, the set shockwave
 # (bigger with the full set) and the Player getting hit. The camera offset jumps
@@ -855,6 +858,7 @@ func equip_pet(kind: int) -> void:
 	pet.bite_cooldown = pet_bite_cooldown[kind - 1]
 	pet.bite_pop = pet_bite_pop[kind - 1]
 	pet.spits = kind == 3
+	pet.sprite_sheet = pet_sprite_sheets[kind - 1]
 	# Beside the Player in the y-sorted World, so it draws by its y like the rest.
 	get_parent().add_child(pet)
 	print("Picked up pet %s" % pet_names[kind - 1])
