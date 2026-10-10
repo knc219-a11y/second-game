@@ -22,6 +22,10 @@ const ARMOR_ICON := preload("res://art/stage1/drops/s1_drop_husk_shard.png")
 const SCAB_PUP_ICON := preload("res://art/stage1/drops/s1_drop_regen_core.png")
 const STAGE1_HEAL_ICON := preload("res://art/stage1/drops/s1_drop_regen_fiber.png")
 
+# Set once the drop is taken: queue_free waits for the frame's end, and
+# area_entered plus the ichor retry below can both fire in that frame.
+var picked: bool = false
+
 
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
@@ -65,7 +69,7 @@ func _physics_process(_delta: float) -> void:
 
 func _on_area_entered(area: Area2D) -> void:
 	var target := area.get_parent()
-	if not target.has_method("equip_weapon"):
+	if picked or not target.has_method("equip_weapon"):
 		return
 	if is_heal:
 		if not target.heal(target.heal_amount):
@@ -78,5 +82,6 @@ func _on_area_entered(area: Area2D) -> void:
 		target.equip_ring()
 	else:
 		target.equip_weapon(tier)
+	picked = true
 	target.play_pickup_sound(1.25 if is_heal else 1.0)
 	queue_free()
