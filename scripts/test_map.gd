@@ -91,12 +91,12 @@ const WATCHTOWER_TEX := preload("res://art/stage1/props/s1_watchtower.png")
 const WATCHTOWER_ORIGIN := Vector2(97, 298)
 const WATCHTOWER_FOOTPRINT := [Vector2(0, -22), Vector2(140, 28)]
 @export var watchtower_position: Vector2 = Vector2(1095, 888)
-# Tall Stage 1 props (rock pillar, arch top, tent, watchtower) fade while they
-# would hide the Player: the Player's body box overlaps the sprite and the
-# Player is drawn behind it (north of the prop, or under the arch top).
+# Stage 1 props (rocks, arch top, tent, torches, watchtower) fade while they
+# would hide the Player or an enemy: a body box overlaps the sprite and that
+# character is drawn behind it (north of the prop, or under the arch top).
 @export var prop_fade_alpha: float = 0.45
 @export var prop_fade_time: float = 0.15
-const PLAYER_BODY_RECT := Rect2(-14, -56, 28, 56)
+const CHAR_BODY_RECT := Rect2(-14, -56, 28, 56)
 var fade_sprites: Array[Sprite2D] = []
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
@@ -339,10 +339,10 @@ func _dress_rocks() -> void:
 		if size.y > size.x * 1.5:
 			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILLAR_TEX, ROCK_PILLAR_OFFSET, bottom, 1.0))
 		elif size.x > 150:
-			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(-size.x / 4, 0), 0.85)
-			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(size.x / 4, 0), 0.85)
+			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(-size.x / 4, 0), 0.85))
+			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(size.x / 4, 0), 0.85))
 		else:
-			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom, minf(1.0, size.x / 96.0))
+			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom, minf(1.0, size.x / 96.0)))
 
 
 # Named Rock* so the next _build_rocks clears it with the rocks.
@@ -427,6 +427,9 @@ func _build_torches() -> void:
 		pole.centered = false
 		pole.offset = -TORCH_ORIGIN
 		torch.add_child(pole)
+		# The pole's box decides; the whole torch (flame and glow too) fades.
+		pole.set_meta("fade_node", torch)
+		fade_sprites.append(pole)
 		var flame := AnimatedSprite2D.new()
 		flame.sprite_frames = frames
 		flame.centered = false
@@ -720,25 +723,32 @@ func _physics_process(delta: float) -> void:
 		_spawn_enemy()
 
 
-# Tweens each tall prop to prop_fade_alpha while it covers the Player, back to
-# opaque once the Player steps out. The wanted state is kept as meta so a tween
-# only starts when it changes (and replaces any still running).
+# Tweens each prop to prop_fade_alpha while it covers the Player or an enemy,
+# back to opaque once they step out. The wanted state is kept as meta so a
+# tween only starts when it changes (and replaces any still running).
 func _update_prop_fade() -> void:
-	var body := Rect2(player.global_position + PLAYER_BODY_RECT.position, PLAYER_BODY_RECT.size)
+	var chars: Array[Node2D] = [player]
+	for e in enemies.get_children():
+		chars.append(e as Node2D)
 	for sprite in fade_sprites:
 		if not is_instance_valid(sprite) or not sprite.is_inside_tree():
 			continue
 		var rect := sprite.get_global_transform() * sprite.get_rect()
-		var behind := sprite.z_index > 0 or player.global_position.y < (sprite.get_parent() as Node2D).global_position.y
-		var faded := behind and rect.intersects(body)
+		var base_y := (sprite.get_parent() as Node2D).global_position.y
+		var faded := false
+		for c in chars:
+			if (sprite.z_index > 0 or c.global_position.y < base_y) and rect.intersects(Rect2(c.global_position + CHAR_BODY_RECT.position, CHAR_BODY_RECT.size)):
+				faded = true
+				break
 		if sprite.get_meta("faded", false) == faded:
 			continue
 		sprite.set_meta("faded", faded)
-		if sprite.has_meta("fade_tween"):
-			(sprite.get_meta("fade_tween") as Tween).kill()
-		var tween := sprite.create_tween()
-		sprite.set_meta("fade_tween", tween)
-		tween.tween_property(sprite, "modulate:a", prop_fade_alpha if faded else 1.0, prop_fade_time)
+		var target: CanvasItem = sprite.get_meta("fade_node", sprite)
+		if target.has_meta("fade_tween"):
+			(target.get_meta("fade_tween") as Tween).kill()
+		var tween := target.create_tween()
+		target.set_meta("fade_tween", tween)
+		tween.tween_property(target, "modulate:a", prop_fade_alpha if faded else 1.0, prop_fade_time)
 
 
 func _spawn_enemy() -> void:
