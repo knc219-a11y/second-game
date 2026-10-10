@@ -17,7 +17,11 @@ extends Area2D
 # shapes: the armor as a hardened husk shard and the Scab Pup (pet kind 2) as a
 # stabilized regen core in every stage, since they belong to the item; the
 # ichor drop as regen fiber only in Stage 1 (test_map.is_stage_one), since the
-# heal is shared by every stage and keeps its green orb elsewhere.
+# heal is shared by every stage and keeps its green orb elsewhere. Callus Blade
+# (weapon tier 1) and Nerve Ring belong to the item too, so they show in every
+# stage; Bone Blade (tier 2) keeps the sword shape.
+const CALLUS_BLADE_ICON := preload("res://art/stage1/drops/s1_drop_callus_blade.png")
+const NERVE_RING_ICON := preload("res://art/stage1/drops/s1_drop_nerve_ring.png")
 const ARMOR_ICON := preload("res://art/stage1/drops/s1_drop_husk_shard.png")
 const SCAB_PUP_ICON := preload("res://art/stage1/drops/s1_drop_regen_core.png")
 const STAGE1_HEAL_ICON := preload("res://art/stage1/drops/s1_drop_regen_fiber.png")
@@ -39,7 +43,14 @@ func _ready() -> void:
 	$Visual/Glow.visible = not is_heal
 	var icon: Texture2D = null
 	var shape: Node2D = null
-	if is_armor:
+	if is_weapon and tier == 1:
+		icon = CALLUS_BLADE_ICON
+		shape = $Visual/Sword
+		$Visual/Hilt.visible = false
+	elif is_ring:
+		icon = NERVE_RING_ICON
+		shape = $Visual/Ring
+	elif is_armor:
 		icon = ARMOR_ICON
 		shape = $Visual/Armor
 	elif is_pet and tier == 2:
