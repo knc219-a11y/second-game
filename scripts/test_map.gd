@@ -73,6 +73,17 @@ const TENT_TEX := preload("res://art/stage1/props/s1_tent.png")
 const TENT_ORIGIN := Vector2(104, 164)
 const TENT_FOOTPRINT := [Vector2(0, -12), Vector2(170, 24)]
 @export var tent_position: Vector2 = Vector2(1330, 860)
+# Stage 1 prop: bone torches flanking the tent. The pole (44x116, origin at
+# bottom centre 22,112) has no flame of its own; a 4-frame flame strip (36x46
+# per frame, base at the bottom centre) loops in its bowl, with a soft additive
+# glow that breathes. Only a small box at the foot is solid.
+const TORCH_POLE_TEX := preload("res://art/stage1/props/s1_torch_pole.png")
+const TORCH_FLAME_TEX := preload("res://art/stage1/props/s1_torch_flame.png")
+const TORCH_ORIGIN := Vector2(22, 112)
+const TORCH_FOOTPRINT := [Vector2(0, -4), Vector2(18, 10)]
+const TORCH_BOWL := Vector2(3, -93)
+const TORCH_FLAME_FPS := 8.0
+@export var torch_positions: PackedVector2Array = PackedVector2Array([Vector2(1200, 872), Vector2(1462, 876)])
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -266,6 +277,7 @@ func _spawn_stage() -> void:
 		_dress_rocks()
 		_build_bone_arch()
 		_build_tent()
+		_build_torches()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
@@ -360,6 +372,60 @@ func _build_tent() -> void:
 	sprite.offset = -TENT_ORIGIN
 	tent.add_child(sprite)
 	obstacles.add_child(tent)
+
+
+# Named Rock* so the next _build_rocks clears them with the rocks.
+func _build_torches() -> void:
+	var frames := SpriteFrames.new()
+	for i in 4:
+		var atlas := AtlasTexture.new()
+		atlas.atlas = TORCH_FLAME_TEX
+		atlas.region = Rect2(i * 36, 0, 36, 46)
+		frames.add_frame("default", atlas)
+	frames.set_animation_speed("default", TORCH_FLAME_FPS)
+	var glow_tex := GradientTexture2D.new()
+	glow_tex.width = 112
+	glow_tex.height = 112
+	glow_tex.fill = GradientTexture2D.FILL_RADIAL
+	glow_tex.fill_from = Vector2(0.5, 0.5)
+	glow_tex.fill_to = Vector2(0.5, 0.0)
+	glow_tex.gradient = Gradient.new()
+	glow_tex.gradient.set_color(0, Color(1.0, 0.45, 0.15, 0.28))
+	glow_tex.gradient.set_color(1, Color(1.0, 0.35, 0.1, 0.0))
+	var glow_mat := CanvasItemMaterial.new()
+	glow_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	for i in torch_positions.size():
+		var torch := StaticBody2D.new()
+		torch.name = "RockTorch%d" % i
+		torch.position = torch_positions[i]
+		var shape := RectangleShape2D.new()
+		shape.size = TORCH_FOOTPRINT[1]
+		var col := CollisionShape2D.new()
+		col.shape = shape
+		col.position = TORCH_FOOTPRINT[0]
+		torch.add_child(col)
+		var pole := Sprite2D.new()
+		pole.texture = TORCH_POLE_TEX
+		pole.centered = false
+		pole.offset = -TORCH_ORIGIN
+		torch.add_child(pole)
+		var flame := AnimatedSprite2D.new()
+		flame.sprite_frames = frames
+		flame.centered = false
+		flame.offset = Vector2(-18, -46)
+		flame.position = TORCH_BOWL
+		flame.frame = i * 2 % 4
+		flame.play()
+		torch.add_child(flame)
+		var glow := Sprite2D.new()
+		glow.texture = glow_tex
+		glow.material = glow_mat
+		glow.position = TORCH_BOWL + Vector2(0, -14)
+		torch.add_child(glow)
+		var tween := glow.create_tween().set_loops()
+		tween.tween_property(glow, "scale", Vector2(1.12, 1.12), 0.35 + 0.07 * i)
+		tween.tween_property(glow, "scale", Vector2(0.92, 0.92), 0.4 + 0.05 * i)
+		obstacles.add_child(torch)
 
 
 func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> void:
