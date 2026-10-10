@@ -91,6 +91,13 @@ const WATCHTOWER_TEX := preload("res://art/stage1/props/s1_watchtower.png")
 const WATCHTOWER_ORIGIN := Vector2(97, 298)
 const WATCHTOWER_FOOTPRINT := [Vector2(0, -22), Vector2(140, 28)]
 @export var watchtower_position: Vector2 = Vector2(1095, 888)
+# Tall Stage 1 props (rock pillar, arch top, tent, watchtower) fade while they
+# would hide the Player: the Player's body box overlaps the sprite and the
+# Player is drawn behind it (north of the prop, or under the arch top).
+@export var prop_fade_alpha: float = 0.45
+@export var prop_fade_time: float = 0.15
+const PLAYER_BODY_RECT := Rect2(-14, -56, 28, 56)
+var fade_sprites: Array[Sprite2D] = []
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -330,7 +337,7 @@ func _dress_rocks() -> void:
 		var bottom := Vector2(0, size.y / 2)
 		(rock.get_node("Visual") as Polygon2D).visible = false
 		if size.y > size.x * 1.5:
-			_add_rock_sprite(rock, ROCK_PILLAR_TEX, ROCK_PILLAR_OFFSET, bottom, 1.0)
+			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILLAR_TEX, ROCK_PILLAR_OFFSET, bottom, 1.0))
 		elif size.x > 150:
 			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(-size.x / 4, 0), 0.85)
 			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(size.x / 4, 0), 0.85)
@@ -360,6 +367,8 @@ func _build_bone_arch() -> void:
 		sprite.offset = Vector2(-BONE_ARCH_ORIGIN.x, part[0] - BONE_ARCH_ORIGIN.y)
 		sprite.z_index = part[2]
 		arch.add_child(sprite)
+		if part[2] > 0:
+			fade_sprites.append(sprite)
 	obstacles.add_child(arch)
 
 
@@ -379,6 +388,7 @@ func _build_tent() -> void:
 	sprite.centered = false
 	sprite.offset = -TENT_ORIGIN
 	tent.add_child(sprite)
+	fade_sprites.append(sprite)
 	obstacles.add_child(tent)
 
 
@@ -452,10 +462,11 @@ func _build_watchtower() -> void:
 	sprite.centered = false
 	sprite.offset = -WATCHTOWER_ORIGIN
 	tower.add_child(sprite)
+	fade_sprites.append(sprite)
 	obstacles.add_child(tower)
 
 
-func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> void:
+func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> Sprite2D:
 	var sprite := Sprite2D.new()
 	sprite.texture = tex
 	sprite.centered = false
@@ -463,10 +474,12 @@ func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector
 	sprite.position = pos
 	sprite.scale = Vector2(s, s)
 	rock.add_child(sprite)
+	return sprite
 
 
 # Replaces every Rock* under Obstacles (walls stay) with the given boxes.
 func _build_rocks(boxes: Array, color: Color = Color.WHITE) -> void:
+	fade_sprites.clear()
 	for child in obstacles.get_children():
 		if child.name.begins_with("Rock"):
 			obstacles.remove_child(child)
@@ -683,6 +696,7 @@ func _enter_dungeon() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_prop_fade()
 	if player.get("is_dead") == true:
 		return
 	if not endless_mode:
@@ -704,6 +718,27 @@ func _physics_process(delta: float) -> void:
 	if respawn_left <= 0.0:
 		respawn_left = respawn_delay
 		_spawn_enemy()
+
+
+# Tweens each tall prop to prop_fade_alpha while it covers the Player, back to
+# opaque once the Player steps out. The wanted state is kept as meta so a tween
+# only starts when it changes (and replaces any still running).
+func _update_prop_fade() -> void:
+	var body := Rect2(player.global_position + PLAYER_BODY_RECT.position, PLAYER_BODY_RECT.size)
+	for sprite in fade_sprites:
+		if not is_instance_valid(sprite) or not sprite.is_inside_tree():
+			continue
+		var rect := sprite.get_global_transform() * sprite.get_rect()
+		var behind := sprite.z_index > 0 or player.global_position.y < (sprite.get_parent() as Node2D).global_position.y
+		var faded := behind and rect.intersects(body)
+		if sprite.get_meta("faded", false) == faded:
+			continue
+		sprite.set_meta("faded", faded)
+		if sprite.has_meta("fade_tween"):
+			(sprite.get_meta("fade_tween") as Tween).kill()
+		var tween := sprite.create_tween()
+		sprite.set_meta("fade_tween", tween)
+		tween.tween_property(sprite, "modulate:a", prop_fade_alpha if faded else 1.0, prop_fade_time)
 
 
 func _spawn_enemy() -> void:
