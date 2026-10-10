@@ -128,6 +128,16 @@ extends CharacterBody2D
 # Painted look per pet (pet.gd sprite_sheet); null keeps the placeholder shape.
 # Only the Scab Pup (Stage 1 skin lineage) has one so far.
 @export var pet_sprite_sheets: Array[Texture2D] = [null, preload("res://art/stage1/pets/s1_scab_pup.png"), null]
+# Player art: a strip of right-facing frames sprite_frame_size each, origin
+# at the feet centre (sprite_origin). Frames 0-1 idle, 2-5 walk. It replaces the
+# placeholder Body, which stays hidden but keeps holding the flash colour that
+# tints the sprite. Left is the existing Visual.scale.x flip. Attacks, dash,
+# whirl and hurt show idle frame 0 (no attack art yet). null keeps the box.
+@export var sprite_sheet: Texture2D = preload("res://art/player/player.png")
+@export var sprite_frame_size: Vector2 = Vector2(96, 72)
+@export var sprite_origin: Vector2 = Vector2(48, 68)
+@export var idle_fps: float = 2.0
+@export var walk_fps: float = 10.0
 @export var pet_scene: PackedScene = preload("res://scenes/pet.tscn")
 # Screen shake on big moments: the combo finisher landing, the set shockwave
 # (bigger with the full set) and the Player getting hit. The camera offset jumps
@@ -194,6 +204,8 @@ enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
 # 1 = right, -1 = left. Art faces right by default; left is a horizontal flip.
 var facing: int = 1
+var sprite: Sprite2D
+var sprite_anim_time: float = 0.0
 
 var attack_phase: AttackPhase = AttackPhase.NONE
 var attack_time: float = 0.0
@@ -277,6 +289,8 @@ var warn_streams: Array[AudioStreamWAV] = []
 
 
 func _ready() -> void:
+	if sprite_sheet:
+		_setup_sprite()
 	hp = max_hp
 	hp_label.text = str(hp)
 	_build_shockwave_ring()
@@ -1025,7 +1039,44 @@ func _die() -> void:
 	game_over.visible = true
 
 
-func _process(_delta: float) -> void:
+func _setup_sprite() -> void:
+	sprite = Sprite2D.new()
+	sprite.name = "Sprite"
+	sprite.texture = sprite_sheet
+	sprite.hframes = int(sprite_sheet.get_width() / sprite_frame_size.x)
+	sprite.centered = false
+	sprite.offset = -sprite_origin
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://scripts/sprite_tint.gdshader")
+	sprite.material = mat
+	visual.add_child(sprite)
+	visual.move_child(sprite, body.get_index())
+	body.visible = false
+	$Visual/FacingMarker.visible = false
+
+
+# Idle (2 frames) when standing, walk (4 frames) when moving, idle frame 0
+# while any attack or skill runs. Body colour (hurt/heal flash, dead) is laid over it.
+func _update_sprite(delta: float) -> void:
+	sprite_anim_time += delta
+	var frame := 0
+	var busy := attack_phase != AttackPhase.NONE or dash_time_left > 0.0 or whirl_time_left > 0.0 or hurt_knockback_left > 0.0 or is_dead
+	if busy:
+		frame = 0
+	elif roll_time_left <= 0.0 and velocity.length() > 10.0:
+		frame = 2 + int(sprite_anim_time * walk_fps) % 4
+	else:
+		frame = int(sprite_anim_time * idle_fps) % 2
+	sprite.frame = frame
+	var tint := Color(body.color, 0.0)
+	if body.color != base_color:
+		tint.a = 0.6
+	sprite.material.set_shader_parameter("tint", tint)
+
+
+func _process(delta: float) -> void:
+	if sprite:
+		_update_sprite(delta)
 	# _physics_process is off after death, so the restart key is read here.
 	if is_dead and Input.is_action_just_pressed("restart"):
 		_restart()
