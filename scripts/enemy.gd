@@ -116,6 +116,22 @@ extends CharacterBody2D
 @export var death_shard_distance: float = 46.0
 # How far ahead (px) it looks for something in its way before sidestepping.
 @export var sidestep_lookahead: float = 8.0
+# Painted look (Stage 1 only, set by test_map before add_child): a strip of
+# frames sprite_frame_size each, facing right, origin at the feet centre
+# (sprite_origin). It replaces the placeholder Body, which stays hidden but
+# keeps holding the flash/telegraph colour that tints the sprite. Frames: 0
+# stand (idle), 1 and 2 steps (walk is 1,0,2,0), 2 wind-up, 3 lunge (attack).
+# Left is the same frames flipped. Hit/hurt boxes are unchanged.
+@export var sprite_sheet: Texture2D
+@export var sprite_frame_size: Vector2 = Vector2(80, 64)
+@export var sprite_origin: Vector2 = Vector2(40, 60)
+@export var walk_fps: float = 8.0
+# How far (px) the sprite leans back in the wind-up and forward in the lunge.
+@export var windup_lean: float = 3.0
+@export var lunge_lean: float = 4.0
+@export var sprite_shard_color: Color = Color(0.82, 0.7, 0.6, 1)
+const WALK_FRAMES := [1, 0, 2, 0]
+const TINT_SHADER := preload("res://scripts/sprite_tint.gdshader")
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
 
@@ -142,6 +158,10 @@ var is_counter: bool = false
 var sidestep_dir: int = 0
 # Same size as the shot's collision box (projectile.tscn), for the lane check.
 var lane_shape := RectangleShape2D.new()
+var sprite: Sprite2D
+var walk_time: float = 0.0
+# 1 = right, -1 = left (sprite only; attacks still use attack_pivot.scale.x).
+var facing: int = 1
 
 @onready var hp_label: Label = $HpLabel
 # Placeholder attack visual; scale.x is locked toward the Player at attack start.
@@ -163,6 +183,8 @@ func _ready() -> void:
 	hp_label.text = str(hp)
 	add_to_group("enemies")
 	player = get_tree().get_first_node_in_group("player") as Node2D
+	if sprite_sheet:
+		_setup_sprite()
 
 
 func _physics_process(delta: float) -> void:
@@ -185,7 +207,64 @@ func _physics_process(delta: float) -> void:
 	if flash_time_left > 0.0:
 		flash_time_left -= delta
 		if flash_time_left <= 0.0:
-			body.color = _body_color()
+			_paint(_body_color())
+	_update_sprite(delta)
+
+
+func _setup_sprite() -> void:
+	sprite = Sprite2D.new()
+	sprite.name = "Sprite"
+	sprite.texture = sprite_sheet
+	sprite.hframes = int(sprite_sheet.get_width() / sprite_frame_size.x)
+	sprite.centered = false
+	sprite.offset = -sprite_origin
+	var mat := ShaderMaterial.new()
+	mat.shader = TINT_SHADER
+	sprite.material = mat
+	add_child(sprite)
+	move_child(sprite, body.get_index())
+	body.visible = false
+
+
+# Body colour (base, hit flash, telegraph); with a sprite, anything but the
+# base colour is laid over it (strongest for the flash).
+func _paint(c: Color) -> void:
+	body.color = c
+	if sprite:
+		var tint := Color(c, 0.0)
+		if c == flash_color:
+			tint.a = 0.85
+		elif c != base_color:
+			tint.a = 0.5
+		sprite.material.set_shader_parameter("tint", tint)
+
+
+func _update_sprite(delta: float) -> void:
+	if sprite == null:
+		return
+	var frame := 0
+	var lean := 0.0
+	if attack_phase != AttackPhase.NONE:
+		facing = int(attack_pivot.scale.x)
+		if attack_phase == AttackPhase.STARTUP:
+			frame = 2
+			lean = -windup_lean
+		else:
+			frame = 3
+			lean = lunge_lean if attack_phase == AttackPhase.ACTIVE else 0.0
+	elif knockback_time_left <= 0.0:
+		if absf(velocity.x) > 1.0:
+			facing = 1 if velocity.x > 0.0 else -1
+		elif is_chasing and is_instance_valid(player):
+			facing = 1 if player.global_position.x >= global_position.x else -1
+		if velocity.length() > 1.0:
+			walk_time += delta
+			frame = WALK_FRAMES[int(walk_time * walk_fps) % WALK_FRAMES.size()]
+		else:
+			walk_time = 0.0
+	sprite.frame = frame
+	sprite.flip_h = facing < 0
+	sprite.position.x = lean * facing
 
 
 func _chase(delta: float) -> void:
@@ -372,7 +451,7 @@ func _set_attack_phase(phase: AttackPhase) -> void:
 	attack_arc.visible = phase != AttackPhase.STARTUP and not is_ranged
 	# Don't overwrite a hit flash still in progress; it restores the color when done.
 	if flash_time_left <= 0.0:
-		body.color = _body_color()
+		_paint(_body_color())
 	match phase:
 		AttackPhase.STARTUP:
 			attack_pivot.modulate = Color(1, 1, 1, 1)
@@ -436,7 +515,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 		queue_free()
 		return
 
-	body.color = flash_color
+	_paint(flash_color)
 	flash_time_left = flash_duration
 
 	if (super_armor or is_counter) and attack_phase != AttackPhase.NONE:
@@ -487,15 +566,25 @@ func _spawn_death_burst(direction: int) -> void:
 		dir = 1 if global_position.x >= player.global_position.x else -1
 	var world := player.get_parent()
 	# Body copy, pivot at the feet like the real one, so it tips over sideways.
-	var corpse := Polygon2D.new()
-	corpse.polygon = body.polygon
-	corpse.color = Color.WHITE
-	corpse.scale = body.scale
+	var corpse: Node2D
+	if sprite:
+		# Same frame, over-bright fading back to its own colours.
+		corpse = sprite.duplicate() as Sprite2D
+		corpse.material = null
+		corpse.modulate = Color(2.5, 2.5, 2.5, 1)
+	else:
+		corpse = Polygon2D.new()
+		corpse.polygon = body.polygon
+		corpse.color = Color.WHITE
+		corpse.scale = body.scale
 	corpse.global_position = global_position
 	corpse.z_index = 5
 	world.add_child(corpse)
 	var tween := corpse.create_tween()
-	tween.tween_property(corpse, "color", base_color, death_duration * 0.3)
+	if sprite:
+		tween.tween_property(corpse, "modulate", Color.WHITE, death_duration * 0.3)
+	else:
+		tween.tween_property(corpse, "color", base_color, death_duration * 0.3)
 	tween.parallel().tween_property(corpse, "rotation", dir * PI * 0.5, death_duration * 0.6) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tween.parallel().tween_property(corpse, "position:x", corpse.position.x + dir * death_slide, death_duration) \
@@ -507,7 +596,7 @@ func _spawn_death_burst(direction: int) -> void:
 	for i in death_shard_count:
 		var shard := Polygon2D.new()
 		shard.polygon = PackedVector2Array([Vector2(-4, -4), Vector2(4, -4), Vector2(4, 4), Vector2(-4, 4)])
-		shard.color = base_color.lightened(0.2)
+		shard.color = sprite_shard_color if sprite else base_color.lightened(0.2)
 		shard.global_position = center
 		shard.rotation = randf() * TAU
 		shard.z_index = 6

@@ -52,6 +52,9 @@ const STAGE_ROCKS := [
 const STAGE_FLOOR_COLORS := [Color(0.4, 0.3, 0.29, 1), Color(0.2, 0.19, 0.18, 1), Color(0.22, 0.1, 0.11, 1)]
 # Stage 1 rocks wear painted props instead of the flat boxes. Both PNGs have
 # their origin at the bottom centre (offset below); collisions stay the boxes.
+# Stage 1 normal enemy (Husk Crawler): 4 frames of 80x64, origin at the feet
+# centre (40,60); see enemy.gd sprite_sheet.
+const HUSK_CRAWLER_TEX := preload("res://art/stage1/enemies/s1_husk_crawler.png")
 const ROCK_PILE_TEX := preload("res://art/stage1/props/s1_rock_pile.png")
 const ROCK_PILLAR_TEX := preload("res://art/stage1/props/s1_rock_pillar.png")
 const ROCK_PILE_OFFSET := Vector2(-64, -92)
@@ -302,6 +305,9 @@ func _spawn_stage() -> void:
 			_make_tough(enemy)
 		elif entry[0] == "ranged":
 			_make_ranged(enemy)
+		elif stage == 1:
+			# Stage 1 normal (Husk Crawler) wears its painted sprite.
+			enemy.sprite_sheet = HUSK_CRAWLER_TEX
 		enemies.add_child(enemy)
 	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
 	_show_banner("Stage %d  %s" % [stage, _stage_name()])
