@@ -101,6 +101,40 @@ const WATCHTOWER_FOOTPRINT := [Vector2(0, -22), Vector2(140, 28)]
 @export var prop_fade_time: float = 0.15
 const CHAR_BODY_RECT := Rect2(-14, -56, 28, 56)
 var fade_sprites: Array[Sprite2D] = []
+# Stage 1 backdrop: the god's skin and bone outside the walls, so the edges
+# don't end in grey. Nothing here is solid (the walls still are). The far side
+# (top) is a skin cliff and a spined ridge rising behind the top wall; the
+# other sides drop into a hazy gorge with bone shapes down in it. Each piece is
+# [texture, bottom centre, scale, flip_h, modulate]; back pieces draw under the
+# floor, front pieces over the floor's edge but under the World.
+const BG_CLIFF_TEX := preload("res://art/stage1/bg/s1_bg_cliff.png")
+const BG_RIDGE_TEX := preload("res://art/stage1/bg/s1_bg_ridge.png")
+const BG_DOME_TEX := preload("res://art/stage1/bg/s1_bg_dome.png")
+const BG_RIBS_TEX := preload("res://art/stage1/bg/s1_bg_ribs.png")
+const BG_LEDGE_TEX := preload("res://art/stage1/bg/s1_bg_ledge.png")
+const BG_PILLAR_TEX := preload("res://art/stage1/bg/s1_bg_pillar.png")
+const BACKDROP_BACK := [
+	[BG_DOME_TEX, Vector2(-430, 600), 0.8, false, Color(0.86, 0.8, 0.8, 0.5)],
+	[BG_RIBS_TEX, Vector2(-360, 1230), 0.9, true, Color(0.66, 0.6, 0.6, 0.9)],
+	[BG_RIDGE_TEX, Vector2(2080, 860), 0.9, true, Color(0.8, 0.75, 0.75, 0.55)],
+	[BG_PILLAR_TEX, Vector2(1820, 540), 0.85, false, Color(0.72, 0.66, 0.66, 0.85)],
+	[BG_LEDGE_TEX, Vector2(400, 1250), 0.9, false, Color(0.62, 0.56, 0.56, 1)],
+	[BG_RIBS_TEX, Vector2(1020, 1270), 0.85, false, Color(0.6, 0.54, 0.54, 1)],
+	[BG_DOME_TEX, Vector2(1640, 1180), 0.75, true, Color(0.8, 0.74, 0.74, 0.5)],
+]
+const BACKDROP_FRONT := [
+	[BG_RIDGE_TEX, Vector2(800, 30), 1.2, false, Color(0.84, 0.8, 0.79, 1)],
+	[BG_CLIFF_TEX, Vector2(-220, 40), 1.0, false, Color(0.88, 0.84, 0.83, 1)],
+	[BG_CLIFF_TEX, Vector2(1820, 40), 1.0, true, Color(0.88, 0.84, 0.83, 1)],
+]
+# Haze behind it all: pale far above, dark deep below.
+const BACKDROP_HAZE := [Color(0.56, 0.5, 0.48), Color(0.33, 0.27, 0.27), Color(0.12, 0.09, 0.09)]
+# The plateau's cut edge: a face under the bottom wall (it also covers the
+# floor tiles that run past y 900) and a thin rim down each side.
+const BACKDROP_LIP_TOP := Color(0.42, 0.33, 0.32)
+const BACKDROP_LIP_BOTTOM := Color(0.22, 0.16, 0.16)
+var backdrop_back: Node2D
+var backdrop_front: Node2D
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -226,6 +260,7 @@ var kills: int = 0
 
 func _ready() -> void:
 	base_keep_alive = keep_alive
+	_build_backdrop()
 	exit_gate.visible = false
 	if not endless_mode:
 		# The scene's placed enemies are only for endless mode; stages bring their own.
@@ -315,6 +350,7 @@ func _spawn_stage() -> void:
 
 # Tiled floor on, grid off (or the other way round). Fills the layer once.
 func _show_ground(on: bool) -> void:
+	_show_backdrop(on)
 	ground.visible = on
 	grid.visible = not on
 	if not on or ground.get_used_cells().size() > 0:
@@ -330,6 +366,73 @@ func _show_ground(on: bool) -> void:
 			elif roll < ground_vein_chance + ground_crack_chance:
 				tile = 4 + rng.randi_range(0, 1)
 			ground.set_cell(Vector2i(x, y), 0, Vector2i(tile, 0))
+
+
+# Built once, hidden; _show_backdrop turns it on for Stage 1 only.
+func _build_backdrop() -> void:
+	backdrop_back = Node2D.new()
+	backdrop_back.name = "BackdropBack"
+	add_child(backdrop_back)
+	move_child(backdrop_back, floor_poly.get_index())
+	var stops := [-1400.0, 450.0, 2100.0]
+	for i in 2:
+		var haze := Polygon2D.new()
+		haze.polygon = PackedVector2Array([Vector2(-1600, stops[i]), Vector2(3200, stops[i]), Vector2(3200, stops[i + 1]), Vector2(-1600, stops[i + 1])])
+		haze.vertex_colors = PackedColorArray([BACKDROP_HAZE[i], BACKDROP_HAZE[i], BACKDROP_HAZE[i + 1], BACKDROP_HAZE[i + 1]])
+		backdrop_back.add_child(haze)
+	for piece in BACKDROP_BACK:
+		backdrop_back.add_child(_backdrop_sprite(piece))
+	backdrop_front = Node2D.new()
+	backdrop_front.name = "BackdropFront"
+	add_child(backdrop_front)
+	move_child(backdrop_front, grid.get_index() + 1)
+	# Bottom face with a ragged lower edge, then the side rims.
+	var face := PackedVector2Array([Vector2(-18, 900), Vector2(1618, 900)])
+	var x := 1618.0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GROUND_SEED
+	while x > -18.0:
+		face.append(Vector2(x, 958 + rng.randf_range(0, 22)))
+		x -= rng.randf_range(30, 70)
+	face.append(Vector2(-18, 966))
+	var colors := PackedColorArray()
+	for p in face:
+		colors.append(BACKDROP_LIP_TOP.lerp(BACKDROP_LIP_BOTTOM, clampf((p.y - 900) / 70.0, 0, 1)))
+	var lip := Polygon2D.new()
+	lip.polygon = face
+	lip.vertex_colors = colors
+	backdrop_front.add_child(lip)
+	for side in [[-18.0, 0.0], [1600.0, 1618.0]]:
+		var rim := Polygon2D.new()
+		rim.polygon = PackedVector2Array([Vector2(side[0], 0), Vector2(side[1], 0), Vector2(side[1], 900), Vector2(side[0], 900)])
+		var c_in: Color = BACKDROP_LIP_TOP
+		var c_out: Color = BACKDROP_LIP_BOTTOM
+		rim.vertex_colors = PackedColorArray([c_out, c_in, c_in, c_out] if side[0] < 0 else [c_in, c_out, c_out, c_in])
+		backdrop_front.add_child(rim)
+	for piece in BACKDROP_FRONT:
+		backdrop_front.add_child(_backdrop_sprite(piece))
+	_show_backdrop(false)
+
+
+func _backdrop_sprite(piece: Array) -> Sprite2D:
+	var tex: Texture2D = piece[0]
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	sprite.centered = false
+	sprite.offset = Vector2(-tex.get_width() / 2.0, -tex.get_height())
+	sprite.position = piece[1]
+	sprite.scale = Vector2(piece[2], piece[2])
+	sprite.flip_h = piece[3]
+	sprite.modulate = piece[4]
+	return sprite
+
+
+# The plain wall strips show everywhere else; in Stage 1 the backdrop is the edge.
+func _show_backdrop(on: bool) -> void:
+	backdrop_back.visible = on
+	backdrop_front.visible = on
+	for wall in ["WallTop", "WallBottom", "WallLeft", "WallRight"]:
+		(obstacles.get_node(wall).get_node("Visual") as CanvasItem).visible = not on
 
 
 # Stage 1: hides each rock's box and stands a prop on the box's bottom edge.
