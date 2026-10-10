@@ -855,8 +855,7 @@ func equip_pet(kind: int) -> void:
 	pet.bite_cooldown = pet_bite_cooldown[kind - 1]
 	pet.bite_pop = pet_bite_pop[kind - 1]
 	pet.spits = kind == 3
-	# Beside the Player in the scene; pet.tscn's z_index draws it on top so the
-	# bite dash is not hidden behind the Player or the enemy it bites.
+	# Beside the Player in the y-sorted World, so it draws by its y like the rest.
 	get_parent().add_child(pet)
 	print("Picked up pet %s" % pet_names[kind - 1])
 	pet_label.text = "Pet: %s (%s, %s %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], "spits" if pet.spits else "bites", pet.bite_damage, pet.bite_cooldown]

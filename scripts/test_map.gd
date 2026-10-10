@@ -175,13 +175,15 @@ var respawn_left: float = 0.0
 var base_keep_alive: int = 3
 var kills: int = 0
 
-@onready var enemies: Node2D = $Enemies
-@onready var player: Node2D = $Player
+@onready var enemies: Node2D = $World/Enemies
+@onready var player: Node2D = $World/Player
 @onready var kill_label: Label = $Hud/KillLabel
 @onready var stage_banner: Label = $Hud/StageBanner
 @onready var fade: ColorRect = $Hud/Fade
 @onready var exit_gate: Node2D = $ExitGate
-@onready var obstacles: Node2D = $Obstacles
+@onready var obstacles: Node2D = $World/Obstacles
+# Y-sorted: rocks, Player, pet, enemies and their drops draw back to front by y.
+@onready var world: Node2D = $World
 @onready var floor_poly: Polygon2D = $Floor
 @onready var ground: TileMapLayer = $Ground
 @onready var grid: Node2D = $Grid
@@ -201,7 +203,7 @@ func _ready() -> void:
 	_update_kill_label()
 
 
-# The town gates are copies of the exit gate, kept under the Player in draw order.
+# The town gates are copies of the exit gate, kept under the World in draw order.
 func _build_hub_gates() -> void:
 	for i in HUB_GATES.size():
 		var gate := exit_gate.duplicate() as Node2D
@@ -212,7 +214,7 @@ func _build_hub_gates() -> void:
 		label.offset_right = 60.0
 		label.offset_top = -126.0
 		add_child(gate)
-		move_child(gate, player.get_index())
+		move_child(gate, world.get_index())
 		hub_gates.append(gate)
 
 
@@ -463,7 +465,7 @@ func _spawn_chests(grade: String) -> void:
 		chest.position = exit_position + Vector2(chest_offset_x, y)
 		chest.opened.connect(_on_chest_opened)
 		add_child(chest)
-		move_child(chest, player.get_index())
+		move_child(chest, world.get_index())
 	print("Chests: %s%s" % [str(contents), " (special)" if special else ""])
 
 
@@ -506,7 +508,8 @@ func _move_on(target: int) -> void:
 	var tween := create_tween()
 	tween.tween_property(fade, "color:a", 1.0, fade_time)
 	await tween.finished
-	for child in get_children():
+	# Enemy drops sit in the World; chests (and what they give) under the map.
+	for child in get_children() + world.get_children():
 		if child.get_script() == LOOT_SCRIPT or child.get_script() == CHEST_SCRIPT:
 			child.queue_free()
 	player.position = player_start
@@ -539,7 +542,7 @@ func return_to_town() -> void:
 	keep_alive = base_keep_alive
 	for e in enemies.get_children():
 		e.queue_free()
-	for child in get_children():
+	for child in world.get_children():
 		if child.get_script() == SHOT_SCRIPT:
 			child.queue_free()
 	print("Return to town")
