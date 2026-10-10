@@ -101,40 +101,55 @@ const WATCHTOWER_FOOTPRINT := [Vector2(0, -22), Vector2(140, 28)]
 @export var prop_fade_time: float = 0.15
 const CHAR_BODY_RECT := Rect2(-14, -56, 28, 56)
 var fade_sprites: Array[Sprite2D] = []
-# Stage 1 backdrop: the god's skin and bone outside the walls, so the edges
-# don't end in grey. Nothing here is solid (the walls still are). The far side
-# (top) is a skin cliff and a spined ridge rising behind the top wall; the
-# other sides drop into a hazy gorge with bone shapes down in it. Each piece is
-# [texture, bottom centre, scale, flip_h, modulate]; back pieces draw under the
-# floor, front pieces over the floor's edge but under the World.
+# Stage 1 backdrop: the plateau sits on the god's corpse. Read outward it goes
+# floor -> cut lip -> fog-filled gorge -> far bone shapes, and behind the top
+# wall a skin cliff and spined ridge rise. Nothing here is solid (the walls
+# still are). Each piece is [texture, bottom centre, scale, flip_h, haze
+# amount, fade_from]: backdrop_fade.gdshader tints it toward the haze at its
+# depth and dissolves its bottom from fade_from (UV.y) down, so no piece ends
+# on a flat cut. Back pieces draw under the floor (the floor hides their
+# feet), front ones over the floor's edge but under the World.
 const BG_CLIFF_TEX := preload("res://art/stage1/bg/s1_bg_cliff.png")
 const BG_RIDGE_TEX := preload("res://art/stage1/bg/s1_bg_ridge.png")
 const BG_DOME_TEX := preload("res://art/stage1/bg/s1_bg_dome.png")
 const BG_RIBS_TEX := preload("res://art/stage1/bg/s1_bg_ribs.png")
 const BG_LEDGE_TEX := preload("res://art/stage1/bg/s1_bg_ledge.png")
 const BG_PILLAR_TEX := preload("res://art/stage1/bg/s1_bg_pillar.png")
+const BACKDROP_FADE_SHADER := preload("res://scripts/backdrop_fade.gdshader")
 const BACKDROP_BACK := [
-	[BG_DOME_TEX, Vector2(-430, 600), 0.8, false, Color(0.86, 0.8, 0.8, 0.5)],
-	[BG_RIBS_TEX, Vector2(-360, 1230), 0.9, true, Color(0.66, 0.6, 0.6, 0.9)],
-	[BG_RIDGE_TEX, Vector2(2080, 860), 0.9, true, Color(0.8, 0.75, 0.75, 0.55)],
-	[BG_PILLAR_TEX, Vector2(1820, 540), 0.85, false, Color(0.72, 0.66, 0.66, 0.85)],
-	[BG_LEDGE_TEX, Vector2(400, 1250), 0.9, false, Color(0.62, 0.56, 0.56, 1)],
-	[BG_RIBS_TEX, Vector2(1020, 1270), 0.85, false, Color(0.6, 0.54, 0.54, 1)],
-	[BG_DOME_TEX, Vector2(1640, 1180), 0.75, true, Color(0.8, 0.74, 0.74, 0.5)],
+	# Far shapes behind the top cliffs, filling the gaps in their skyline.
+	[BG_DOME_TEX, Vector2(260, -150), 1.3, false, 0.6, 0.7],
+	[BG_DOME_TEX, Vector2(1340, -170), 1.3, true, 0.6, 0.7],
+	# Gorge: left, right, bottom.
+	[BG_RIDGE_TEX, Vector2(-130, 470), 0.7, true, 0.45, 0.55],
+	[BG_PILLAR_TEX, Vector2(-120, 860), 0.8, false, 0.4, 0.55],
+	[BG_PILLAR_TEX, Vector2(1720, 330), 0.8, true, 0.4, 0.55],
+	[BG_RIBS_TEX, Vector2(1700, 800), 0.7, false, 0.45, 0.55],
+	[BG_LEDGE_TEX, Vector2(380, 1130), 0.8, false, 0.4, 0.5],
+	[BG_RIBS_TEX, Vector2(1000, 1150), 0.8, true, 0.4, 0.5],
+	[BG_DOME_TEX, Vector2(1480, 1110), 0.8, false, 0.5, 0.5],
 ]
 const BACKDROP_FRONT := [
-	[BG_RIDGE_TEX, Vector2(800, 30), 1.2, false, Color(0.84, 0.8, 0.79, 1)],
-	[BG_CLIFF_TEX, Vector2(-220, 40), 1.0, false, Color(0.88, 0.84, 0.83, 1)],
-	[BG_CLIFF_TEX, Vector2(1820, 40), 1.0, true, Color(0.88, 0.84, 0.83, 1)],
+	# Feet overlap the floor's top edge and fade out on the floor itself.
+	[BG_RIDGE_TEX, Vector2(800, 62), 1.2, false, 0.12, 0.9],
+	[BG_CLIFF_TEX, Vector2(-160, 72), 1.0, false, 0.08, 0.92],
+	[BG_CLIFF_TEX, Vector2(1760, 72), 1.0, true, 0.08, 0.92],
 ]
-# Haze behind it all: pale far above, dark deep below.
-const BACKDROP_HAZE := [Color(0.56, 0.5, 0.48), Color(0.33, 0.27, 0.27), Color(0.12, 0.09, 0.09)]
-# The plateau's cut edge: a face under the bottom wall (it also covers the
-# floor tiles that run past y 900) and a thin rim down each side.
-const BACKDROP_LIP_TOP := Color(0.42, 0.33, 0.32)
-const BACKDROP_LIP_BOTTOM := Color(0.22, 0.16, 0.16)
+# Haze behind it all: pale far above, dark deep below (stops at these y).
+const BACKDROP_HAZE := [Color(0.56, 0.5, 0.48), Color(0.36, 0.3, 0.3), Color(0.16, 0.12, 0.12)]
+const BACKDROP_HAZE_Y := [-700.0, 450.0, 1300.0]
+# Fog band over the gorge: clear at the plateau edge, thick this far out.
+const BACKDROP_FOG_DEPTH := 170.0
+const BACKDROP_FOG_ALPHA := 0.75
+# The plateau's cut lip (s1_ground darkened), ragged and fading into the fog.
+const S1_GROUND_TEX := preload("res://art/stage1/tiles/s1_ground.png")
+const BACKDROP_LIP_SHADE := Color(0.5, 0.42, 0.41)
+# Stage 1 camera stops this far past the walls (it showed up to 640px of
+# outside before): the backdrop frames the plateau instead of filling half the screen.
+const STAGE1_CAMERA_LIMITS := Rect2(-200, -300, 2000, 1400)
 var backdrop_back: Node2D
 var backdrop_front: Node2D
+var lip_texture: ImageTexture
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -374,11 +389,12 @@ func _build_backdrop() -> void:
 	backdrop_back.name = "BackdropBack"
 	add_child(backdrop_back)
 	move_child(backdrop_back, floor_poly.get_index())
-	var stops := [-1400.0, 450.0, 2100.0]
-	for i in 2:
+	var ys: Array = [-1600.0] + BACKDROP_HAZE_Y + [2400.0]
+	var cs: Array = [BACKDROP_HAZE[0]] + BACKDROP_HAZE + [BACKDROP_HAZE[2]]
+	for i in ys.size() - 1:
 		var haze := Polygon2D.new()
-		haze.polygon = PackedVector2Array([Vector2(-1600, stops[i]), Vector2(3200, stops[i]), Vector2(3200, stops[i + 1]), Vector2(-1600, stops[i + 1])])
-		haze.vertex_colors = PackedColorArray([BACKDROP_HAZE[i], BACKDROP_HAZE[i], BACKDROP_HAZE[i + 1], BACKDROP_HAZE[i + 1]])
+		haze.polygon = PackedVector2Array([Vector2(-1600, ys[i]), Vector2(3200, ys[i]), Vector2(3200, ys[i + 1]), Vector2(-1600, ys[i + 1])])
+		haze.vertex_colors = PackedColorArray([cs[i], cs[i], cs[i + 1], cs[i + 1]])
 		backdrop_back.add_child(haze)
 	for piece in BACKDROP_BACK:
 		backdrop_back.add_child(_backdrop_sprite(piece))
@@ -386,32 +402,88 @@ func _build_backdrop() -> void:
 	backdrop_front.name = "BackdropFront"
 	add_child(backdrop_front)
 	move_child(backdrop_front, grid.get_index() + 1)
-	# Bottom face with a ragged lower edge, then the side rims.
-	var face := PackedVector2Array([Vector2(-18, 900), Vector2(1618, 900)])
-	var x := 1618.0
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GROUND_SEED
-	while x > -18.0:
-		face.append(Vector2(x, 958 + rng.randf_range(0, 22)))
-		x -= rng.randf_range(30, 70)
-	face.append(Vector2(-18, 966))
-	var colors := PackedColorArray()
-	for p in face:
-		colors.append(BACKDROP_LIP_TOP.lerp(BACKDROP_LIP_BOTTOM, clampf((p.y - 900) / 70.0, 0, 1)))
-	var lip := Polygon2D.new()
-	lip.polygon = face
-	lip.vertex_colors = colors
-	backdrop_front.add_child(lip)
-	for side in [[-18.0, 0.0], [1600.0, 1618.0]]:
-		var rim := Polygon2D.new()
-		rim.polygon = PackedVector2Array([Vector2(side[0], 0), Vector2(side[1], 0), Vector2(side[1], 900), Vector2(side[0], 900)])
-		var c_in: Color = BACKDROP_LIP_TOP
-		var c_out: Color = BACKDROP_LIP_BOTTOM
-		rim.vertex_colors = PackedColorArray([c_out, c_in, c_in, c_out] if side[0] < 0 else [c_in, c_out, c_out, c_in])
-		backdrop_front.add_child(rim)
+	# The lip repeats the plain ground tiles only (no red veins on the face).
+	lip_texture = ImageTexture.create_from_image(S1_GROUND_TEX.get_image().get_region(Rect2i(0, 0, 256, 64)))
+	# The lip on all three open sides (the bottom one also covers the floor
+	# tiles that run past y 900), then fog over it so the face sinks into the gorge.
+	_add_lip(Vector2(1600, 900), Vector2(-1, 0), Vector2(0, 1), 1600.0, 80.0, rng)
+	_add_lip(Vector2(0, 0), Vector2(0, 1), Vector2(-1, 0), 900.0, 26.0, rng)
+	_add_lip(Vector2(1600, 900), Vector2(0, -1), Vector2(1, 0), 900.0, 26.0, rng)
+	_add_fog(Vector2(0, 900), Vector2(0, 1), Vector2(1, 0), 1600.0)
+	_add_fog(Vector2(0, 0), Vector2(-1, 0), Vector2(0, 1), 900.0)
+	_add_fog(Vector2(1600, 0), Vector2(1, 0), Vector2(0, 1), 900.0)
+	# Soft shade on the floor at the cliff's foot, then the cliffs.
+	var shade := Polygon2D.new()
+	shade.polygon = PackedVector2Array([Vector2(-200, 0), Vector2(1800, 0), Vector2(1800, 90), Vector2(-200, 90)])
+	var dark := Color(0.12, 0.08, 0.08, 0.35)
+	var clear := Color(0.12, 0.08, 0.08, 0.0)
+	shade.vertex_colors = PackedColorArray([dark, dark, clear, clear])
+	backdrop_front.add_child(shade)
 	for piece in BACKDROP_FRONT:
 		backdrop_front.add_child(_backdrop_sprite(piece))
 	_show_backdrop(false)
+
+
+func _haze_at(y: float) -> Color:
+	if y <= BACKDROP_HAZE_Y[0]:
+		return BACKDROP_HAZE[0]
+	for i in 2:
+		if y <= BACKDROP_HAZE_Y[i + 1]:
+			return BACKDROP_HAZE[i].lerp(BACKDROP_HAZE[i + 1], (y - BACKDROP_HAZE_Y[i]) / (BACKDROP_HAZE_Y[i + 1] - BACKDROP_HAZE_Y[i]))
+	return BACKDROP_HAZE[2]
+
+
+# A fog band from the edge line (start, running along `along` for `length`)
+# out in direction `out`: clear at the edge, thick at BACKDROP_FOG_DEPTH.
+func _add_fog(start: Vector2, out: Vector2, along: Vector2, length: float) -> void:
+	var a := start - along * 200.0
+	var b := start + along * (length + 200.0)
+	var far := out * BACKDROP_FOG_DEPTH
+	var deep := out * 600.0
+	for band in [[Vector2.ZERO, far, 0.0, BACKDROP_FOG_ALPHA], [far, deep, BACKDROP_FOG_ALPHA, BACKDROP_FOG_ALPHA]]:
+		var fog := Polygon2D.new()
+		fog.polygon = PackedVector2Array([a + band[0], b + band[0], b + band[1], a + band[1]])
+		var c0 := _haze_at((a + band[0]).y)
+		var c1 := _haze_at((a + band[1]).y)
+		c0.a = band[2]
+		c1.a = band[3]
+		fog.vertex_colors = PackedColorArray([c0, c0, c1, c1])
+		backdrop_front.add_child(fog)
+
+
+# The plateau's cut face: from `start` along `along` for `length`, reaching out
+# (direction `out`) a ragged depth around `depth`, ground texture shaded
+# darker toward its far edge (the fog drawn over it does the fading).
+func _add_lip(start: Vector2, along: Vector2, out: Vector2, length: float, depth: float, rng: RandomNumberGenerator) -> void:
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	var edge := BACKDROP_LIP_SHADE
+	var tip := BACKDROP_LIP_SHADE.darkened(0.5)
+	# Inner edge (on the floor line), then the ragged outer edge back.
+	var d := -24.0
+	while d < length + 24.0:
+		pts.append(start + along * d)
+		cols.append(edge)
+		d += 64.0
+	pts.append(start + along * (length + 24.0))
+	cols.append(edge)
+	d = length + 24.0
+	while d > -24.0:
+		var reach := depth * rng.randf_range(0.85, 1.3)
+		pts.append(start + along * d + out * reach)
+		cols.append(tip)
+		d -= rng.randf_range(28.0, 60.0)
+	pts.append(start + along * -24.0 + out * depth)
+	cols.append(tip)
+	var lip := Polygon2D.new()
+	lip.polygon = pts
+	lip.vertex_colors = cols
+	lip.texture = lip_texture
+	lip.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	lip.uv = pts
+	backdrop_front.add_child(lip)
 
 
 func _backdrop_sprite(piece: Array) -> Sprite2D:
@@ -423,16 +495,28 @@ func _backdrop_sprite(piece: Array) -> Sprite2D:
 	sprite.position = piece[1]
 	sprite.scale = Vector2(piece[2], piece[2])
 	sprite.flip_h = piece[3]
-	sprite.modulate = piece[4]
+	var mat := ShaderMaterial.new()
+	mat.shader = BACKDROP_FADE_SHADER
+	mat.set_shader_parameter("haze", _haze_at(piece[1].y - tex.get_height() * piece[2] * 0.5))
+	mat.set_shader_parameter("haze_amount", piece[4])
+	mat.set_shader_parameter("fade_from", piece[5])
+	sprite.material = mat
 	return sprite
 
 
-# The plain wall strips show everywhere else; in Stage 1 the backdrop is the edge.
+# The plain wall strips show everywhere else; in Stage 1 the backdrop is the
+# edge and the camera stops short of the far outside.
 func _show_backdrop(on: bool) -> void:
 	backdrop_back.visible = on
 	backdrop_front.visible = on
 	for wall in ["WallTop", "WallBottom", "WallLeft", "WallRight"]:
 		(obstacles.get_node(wall).get_node("Visual") as CanvasItem).visible = not on
+	var cam: Camera2D = player.camera
+	var r := STAGE1_CAMERA_LIMITS if on else Rect2(-10000000, -10000000, 20000000, 20000000)
+	cam.limit_left = int(r.position.x)
+	cam.limit_top = int(r.position.y)
+	cam.limit_right = int(r.end.x)
+	cam.limit_bottom = int(r.end.y)
 
 
 # Stage 1: hides each rock's box and stands a prop on the box's bottom edge.
