@@ -56,6 +56,16 @@ const ROCK_PILE_TEX := preload("res://art/stage1/props/s1_rock_pile.png")
 const ROCK_PILLAR_TEX := preload("res://art/stage1/props/s1_rock_pillar.png")
 const ROCK_PILE_OFFSET := Vector2(-64, -92)
 const ROCK_PILLAR_OFFSET := Vector2(-52, -212)
+# Stage 1 landmark: a bone arch (320x264, origin at bottom centre 160,260)
+# with only its two feet solid. The image is cut in two at ARCH_SPLIT_Y: the
+# lower part draws under characters, the upper part over them, so walking
+# through the arch puts you under its top without a Y-sort pass.
+const BONE_ARCH_TEX := preload("res://art/stage1/props/s1_bone_arch.png")
+const BONE_ARCH_ORIGIN := Vector2(160, 260)
+const ARCH_SPLIT_Y := 190
+const ARCH_TOP_Z := 4
+const ARCH_FEET := [[Vector2(-85, -12), Vector2(48, 20)], [Vector2(105, -12), Vector2(56, 20)]]
+@export var bone_arch_position: Vector2 = Vector2(820, 330)
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -245,6 +255,7 @@ func _spawn_stage() -> void:
 	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()], STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	if stage == 1:
 		_dress_rocks()
+		_build_bone_arch()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
@@ -295,6 +306,31 @@ func _dress_rocks() -> void:
 			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(size.x / 4, 0), 0.85)
 		else:
 			_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom, minf(1.0, size.x / 96.0))
+
+
+# Named Rock* so the next _build_rocks clears it with the rocks.
+func _build_bone_arch() -> void:
+	var arch := StaticBody2D.new()
+	arch.name = "RockBoneArch"
+	arch.position = bone_arch_position
+	for foot in ARCH_FEET:
+		var shape := RectangleShape2D.new()
+		shape.size = foot[1]
+		var col := CollisionShape2D.new()
+		col.shape = shape
+		col.position = foot[0]
+		arch.add_child(col)
+	var h := BONE_ARCH_TEX.get_height()
+	for part in [[0, ARCH_SPLIT_Y, ARCH_TOP_Z], [ARCH_SPLIT_Y, h - ARCH_SPLIT_Y, 0]]:
+		var sprite := Sprite2D.new()
+		sprite.texture = BONE_ARCH_TEX
+		sprite.centered = false
+		sprite.region_enabled = true
+		sprite.region_rect = Rect2(0, part[0], BONE_ARCH_TEX.get_width(), part[1])
+		sprite.offset = Vector2(-BONE_ARCH_ORIGIN.x, part[0] - BONE_ARCH_ORIGIN.y)
+		sprite.z_index = part[2]
+		arch.add_child(sprite)
+	obstacles.add_child(arch)
 
 
 func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> void:
