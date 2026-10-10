@@ -66,6 +66,13 @@ const ARCH_SPLIT_Y := 190
 const ARCH_TOP_Z := 4
 const ARCH_FEET := [[Vector2(-85, -12), Vector2(48, 20)], [Vector2(105, -12), Vector2(56, 20)]]
 @export var bone_arch_position: Vector2 = Vector2(820, 330)
+# Stage 1 prop: a bone-pole hide tent (208x168, origin at bottom centre 104,164)
+# in the open bottom-right corner. Only a low box on its footprint is solid;
+# the World's Y-sort draws it in front of or behind characters.
+const TENT_TEX := preload("res://art/stage1/props/s1_tent.png")
+const TENT_ORIGIN := Vector2(104, 164)
+const TENT_FOOTPRINT := [Vector2(0, -12), Vector2(170, 24)]
+@export var tent_position: Vector2 = Vector2(1330, 860)
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -258,6 +265,7 @@ func _spawn_stage() -> void:
 	if stage == 1:
 		_dress_rocks()
 		_build_bone_arch()
+		_build_tent()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
@@ -333,6 +341,25 @@ func _build_bone_arch() -> void:
 		sprite.z_index = part[2]
 		arch.add_child(sprite)
 	obstacles.add_child(arch)
+
+
+# Named Rock* so the next _build_rocks clears it with the rocks.
+func _build_tent() -> void:
+	var tent := StaticBody2D.new()
+	tent.name = "RockTent"
+	tent.position = tent_position
+	var shape := RectangleShape2D.new()
+	shape.size = TENT_FOOTPRINT[1]
+	var col := CollisionShape2D.new()
+	col.shape = shape
+	col.position = TENT_FOOTPRINT[0]
+	tent.add_child(col)
+	var sprite := Sprite2D.new()
+	sprite.texture = TENT_TEX
+	sprite.centered = false
+	sprite.offset = -TENT_ORIGIN
+	tent.add_child(sprite)
+	obstacles.add_child(tent)
 
 
 func _add_rock_sprite(rock: Node2D, tex: Texture2D, offset: Vector2, pos: Vector2, s: float) -> void:
