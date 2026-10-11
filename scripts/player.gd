@@ -338,7 +338,8 @@ var whirl_hit_targets: Array[Node] = []
 @onready var hp_label: Label = $HpLabel
 # Placeholder "Game Over" text, shown on death.
 @onready var game_over: CanvasLayer = $GameOver
-# Placeholder readout of the equipped weapon (top-left of the screen).
+# Gear/pet/skill text lines, hidden: the inventory (I) shows the details.
+# Still kept up to date because the inventory and tests read them.
 @onready var weapon_label: Label = $Hud/WeaponLabel
 @onready var armor_label: Label = $Hud/ArmorLabel
 @onready var ring_label: Label = $Hud/RingLabel
@@ -346,6 +347,17 @@ var whirl_hit_targets: Array[Node] = []
 @onready var pet_label: Label = $Hud/PetLabel
 @onready var skill_label: Label = $Hud/SkillLabel
 @onready var material_label: Label = $Hud/MaterialLabel
+# Top-left status HUD, built in _build_status_hud: HP bar, Q/W cooldown boxes, active pet.
+const HUD_HP_RECT := Rect2(16, 14, 300, 24)
+const HUD_ROW_Y := 46.0
+const HUD_SKILL_BOX := 34.0
+const HUD_PET_X := 300.0
+var hp_fill: ColorRect
+var hp_text: Label
+# [shade, key label] per skill, Q then W.
+var skill_boxes: Array = []
+var hud_pet_swatch: ColorRect
+var hud_pet_name: Label
 # Placeholder streak behind the Player while dashing (fades after).
 @onready var dash_trail: Polygon2D = $DashTrail
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
@@ -368,6 +380,8 @@ func _ready() -> void:
 		_setup_sprite()
 	hp = max_hp
 	hp_label.text = str(hp)
+	_build_status_hud()
+	_update_hp_bar()
 	_build_shockwave_ring()
 	_build_whirl_ring()
 	dash_shape.size = dash_hit_size
@@ -692,6 +706,81 @@ func _update_skill_label() -> void:
 	var q := "%.1fs" % dash_cooldown_left if dash_cooldown_left > 0.0 else "ready"
 	var w := "%.1fs" % whirl_cooldown_left if whirl_cooldown_left > 0.0 else "ready"
 	skill_label.text = "Q Dash Slash: %s   W Whirl Slash: %s" % [q, w]
+	if skill_boxes.is_empty():
+		return
+	_update_skill_box(0, "Q", dash_cooldown_left, dash_cooldown)
+	_update_skill_box(1, "W", whirl_cooldown_left, whirl_cooldown)
+
+
+# The dark shade covers the box by the share of cooldown left; the key letter turns into seconds left.
+func _update_skill_box(i: int, key: String, left: float, total: float) -> void:
+	var shade: ColorRect = skill_boxes[i][0]
+	var letter: Label = skill_boxes[i][1]
+	var frac: float = clampf(left / total, 0.0, 1.0) if total > 0.0 else 0.0
+	shade.size.y = (HUD_SKILL_BOX - 4) * frac
+	shade.visible = frac > 0.0
+	letter.text = key if frac <= 0.0 else str(ceili(left))
+	letter.add_theme_color_override("font_color", Color(1, 1, 1, 1) if frac <= 0.0 else Color(0.7, 0.7, 0.7, 1))
+
+
+func _build_status_hud() -> void:
+	var hud: CanvasLayer = $Hud
+	var back := ColorRect.new()
+	back.position = HUD_HP_RECT.position
+	back.size = HUD_HP_RECT.size
+	back.color = Color(0, 0, 0, 0.6)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(back)
+	hp_fill = ColorRect.new()
+	hp_fill.position = Vector2(2, 2)
+	hp_fill.size = HUD_HP_RECT.size - Vector2(4, 4)
+	hp_fill.color = Color(0.82, 0.18, 0.18, 1)
+	back.add_child(hp_fill)
+	hp_text = _hud_label(18)
+	hp_text.size = HUD_HP_RECT.size
+	hp_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hp_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	back.add_child(hp_text)
+	for i in 2:
+		var box := ColorRect.new()
+		box.position = Vector2(16 + i * (HUD_SKILL_BOX + 8), HUD_ROW_Y)
+		box.size = Vector2(HUD_SKILL_BOX, HUD_SKILL_BOX)
+		box.color = Color(0.25, 0.22, 0.2, 0.9)
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hud.add_child(box)
+		var shade := ColorRect.new()
+		shade.position = Vector2(2, 2)
+		shade.size = Vector2(HUD_SKILL_BOX - 4, 0)
+		shade.color = Color(0, 0, 0, 0.7)
+		box.add_child(shade)
+		var letter := _hud_label(20)
+		letter.size = box.size
+		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		letter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		box.add_child(letter)
+		skill_boxes.append([shade, letter])
+	hud_pet_swatch = ColorRect.new()
+	hud_pet_swatch.position = Vector2(HUD_PET_X, HUD_ROW_Y + 7)
+	hud_pet_swatch.size = Vector2(20, 20)
+	hud_pet_swatch.visible = false
+	hud.add_child(hud_pet_swatch)
+	hud_pet_name = _hud_label(20)
+	hud_pet_name.position = Vector2(HUD_PET_X + 28, HUD_ROW_Y + 3)
+	hud_pet_name.visible = false
+	hud.add_child(hud_pet_name)
+
+
+func _hud_label(font_size: int) -> Label:
+	var label := Label.new()
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_constant_override("outline_size", 6)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	return label
+
+
+func _update_hp_bar() -> void:
+	hp_fill.size.x = (HUD_HP_RECT.size.x - 4) * float(hp) / max_hp
+	hp_text.text = "HP %d / %d" % [hp, max_hp]
 
 
 func _set_passing_enemies(on: bool) -> void:
@@ -1224,6 +1313,11 @@ func equip_pet(kind: int) -> void:
 	get_parent().add_child(pet)
 	print("Pet now %s (owned %s)" % [pet_names[kind - 1], owned_pets])
 	pet_label.text = "Pet: %s (%s, %s %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], "spits" if pet.spits else "bites", pet.bite_damage, pet.bite_cooldown]
+	hud_pet_swatch.color = pet_colors[kind - 1]
+	hud_pet_name.text = pet_names[kind - 1]
+	hud_pet_name.add_theme_color_override("font_color", pet_colors[kind - 1])
+	hud_pet_swatch.visible = true
+	hud_pet_name.visible = true
 	_save_gear()
 
 
@@ -1308,6 +1402,7 @@ func heal(amount: int) -> bool:
 		return false
 	hp = mini(hp + amount, max_hp)
 	hp_label.text = str(hp)
+	_update_hp_bar()
 	print("Healed to %d" % hp)
 	body.color = heal_flash_color
 	hurt_flash_left = hurt_flash_duration
@@ -1391,6 +1486,7 @@ func take_damage(amount: int, direction: int = 0) -> void:
 		amount = maxi(amount - armor_value, 1)
 	hp = maxi(hp - amount, 0)
 	hp_label.text = str(hp)
+	_update_hp_bar()
 	print("Player HP: %d" % hp)
 	hurt_sound.play()
 	if hp <= 0:
