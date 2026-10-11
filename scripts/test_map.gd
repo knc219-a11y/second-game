@@ -66,6 +66,19 @@ const STAGE_ROCKS := [
 	# Four pillars around the tough enemy; a split wall guards the exit side.
 	[[Vector2(650, 300), Vector2(60, 60)], [Vector2(950, 300), Vector2(60, 60)], [Vector2(650, 600), Vector2(60, 60)], [Vector2(950, 600), Vector2(60, 60)], [Vector2(1300, 250), Vector2(40, 260)], [Vector2(1300, 720), Vector2(40, 200)]],
 ]
+# Stage 1 rock layout per area, same order as STAGE1_AREAS, so each area reads
+# as a different stretch of the flats. 1-1 keeps STAGE_ROCKS[0]; the camp props
+# (bone arch, tent, torches, watchtower) stay put in every area, so no rock
+# goes near them, the enemy positions, the brood spots, player_start or the
+# exit. 1-2: a pillar east of the arch and a low ridge splitting the south
+# field; 1-3: a pillar in the middle of the field and a ridge in the
+# south-west; the boss arena stays open with two small piles.
+const STAGE1_AREA_ROCKS := [
+	[[Vector2(500, 300), Vector2(120, 60)], [Vector2(1000, 550), Vector2(80, 160)], [Vector2(1250, 250), Vector2(200, 40)], [Vector2(350, 650), Vector2(60, 60)]],
+	[[Vector2(420, 610), Vector2(70, 70)], [Vector2(1100, 190), Vector2(80, 170)], [Vector2(1000, 640), Vector2(200, 40)], [Vector2(1460, 260), Vector2(60, 60)], [Vector2(360, 230), Vector2(90, 50)]],
+	[[Vector2(380, 250), Vector2(120, 60)], [Vector2(1010, 450), Vector2(80, 160)], [Vector2(1220, 160), Vector2(60, 60)], [Vector2(420, 760), Vector2(200, 40)]],
+	[[Vector2(520, 690), Vector2(70, 70)], [Vector2(1330, 230), Vector2(70, 70)]],
+]
 # Placeholder lineage colors per stage: 1 dried pinkish skin (apart from the
 # town's ochre) with callus-yellow rocks, 2 dark marrow ground with dull bone
 # rocks (dimmer than the bone tough enemy), 3 dark clotted red with raw-flesh
@@ -374,7 +387,8 @@ func _spawn_stage() -> void:
 	# The grade counts hits over the whole stage, every area of it.
 	if area == 1:
 		player.hits_taken = 0
-	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()], STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
+	var rocks: Array = STAGE1_AREA_ROCKS[area - 1] if stage == 1 else STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()]
+	_build_rocks(rocks, STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	if stage == 1:
 		_dress_rocks()
 		_build_bone_arch()
