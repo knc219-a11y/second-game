@@ -119,6 +119,8 @@ extends CharacterBody2D
 @export var shot_damage: int = 8
 # How far (px) the shot flies before it vanishes.
 @export var shot_travel: float = 420.0
+# Shot glow and splash colour; alpha 0 keeps the projectile's own (purple).
+@export var shot_color: Color = Color(0, 0, 0, 0)
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 # Line of sight: only winds up when no rock or wall blocks the shot's lane, and
 # stands lane_margin px short of the first one in the way (see _keep_range).
@@ -155,6 +157,8 @@ extends CharacterBody2D
 @export var windup_lean: float = 3.0
 @export var lunge_lean: float = 4.0
 @export var sprite_shard_color: Color = Color(0.82, 0.7, 0.6, 1)
+# Multiplies the sprite's colours (a recoloured variant sharing a strip).
+@export var sprite_color: Color = Color.WHITE
 var idle_time: float = 0.0
 const TINT_SHADER := preload("res://scripts/sprite_tint.gdshader")
 
@@ -252,6 +256,7 @@ func _setup_sprite() -> void:
 	sprite.centered = false
 	sprite.offset = -sprite_origin
 	sprite.scale = Vector2(sprite_scale, sprite_scale)
+	sprite.self_modulate = sprite_color
 	hp_label.position.y -= sprite_frame_size.y * (sprite_scale - 1.0)
 	var mat := ShaderMaterial.new()
 	mat.shader = TINT_SHADER
@@ -589,6 +594,9 @@ func _fire() -> void:
 	shot.speed = shot_speed
 	shot.damage = shot_damage
 	shot.lifetime = shot_travel / shot_speed
+	if shot_color.a > 0.0:
+		(shot.get_node("Glow") as Polygon2D).color = shot_color
+		shot.splash_color = Color(shot_color, 0.8)
 	player.get_parent().add_child(shot)
 
 

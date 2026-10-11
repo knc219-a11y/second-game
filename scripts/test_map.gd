@@ -16,7 +16,8 @@ extends Node2D
 # endless_mode is the special dungeon: the old test-map loop below (respawns +
 # rising pressure) with no exit. Set from the start it skips the stages.
 @export var endless_mode: bool = false
-# Kinds: "normal", "tough", "ranged" (variants made by _make_tough/_make_ranged).
+# Kinds: "normal", "tough", "ranged" (variants made by _make_tough/_make_ranged);
+# Stage 1 areas also use "flinger", "leader" and "boss".
 # Positions sit inside the walls and clear of rocks; enemies wait there until
 # the Player comes within their detect_range. An optional third value is a
 # pack number: when one of a pack spots the Player, the whole pack comes.
@@ -39,15 +40,16 @@ const STAGES := [
 # chests, unlock) as before. Packs: 1-1 a pair past the start and three north
 # of the bone arch; 1-2 three groups spread round the field; 1-3 adds the camp,
 # 2 with their leader (a bigger Husk Crawler that leaps, see _make_leader); then
-# the boss alone.
+# the boss alone. Scab Flingers (ranged, _make_flinger) sit at the back of two
+# 1-2 groups and of the 1-3 arch pack.
 const STAGE1_AREAS := [
 	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
 	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1]],
 	[["normal", Vector2(520, 180), 0], ["normal", Vector2(620, 130), 0],
-	["normal", Vector2(700, 700), 1], ["normal", Vector2(790, 780), 1], ["normal", Vector2(630, 800), 1],
-	["normal", Vector2(1250, 450), 2], ["normal", Vector2(1350, 380), 2]],
+	["normal", Vector2(700, 700), 1], ["normal", Vector2(790, 780), 1], ["flinger", Vector2(630, 800), 1],
+	["normal", Vector2(1250, 450), 2], ["flinger", Vector2(1350, 380), 2]],
 	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
-	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
+	["normal", Vector2(780, 170), 1], ["flinger", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
 	["normal", Vector2(1250, 700), 2], ["leader", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
 	[["boss", Vector2(1150, 450)]],
 ]
@@ -416,6 +418,8 @@ func _spawn_stage() -> void:
 			_make_ranged(enemy)
 		elif entry[0] == "leader":
 			_make_leader(enemy)
+		elif entry[0] == "flinger":
+			_make_flinger(enemy)
 		elif entry[0] == "boss":
 			_make_boss(enemy)
 		elif stage == 1:
@@ -1298,6 +1302,31 @@ func _make_leader(enemy: Node) -> void:
 	enemy.drop_chance = leader_drop_chance
 	enemy.sprite_sheet = HUSK_CRAWLER_TEX
 	enemy.sprite_scale = leader_sprite_scale
+
+
+# Stage 1 ranged enemy, the Scab Flinger: a smaller, pale-yellow Husk Crawler
+# that keeps its distance and flings scabs along the Player's line (the
+# enemy.gd is_ranged shot, dodged by a roll or a step off the line, parried by
+# a swing). Skin lineage, so it drops like a Husk Crawler. Placeholder look
+# (recoloured crawler strip) until its own art.
+@export var flinger_hp: int = 24
+@export var flinger_move_speed: float = 80.0
+@export var flinger_shot_damage: int = 7
+@export var flinger_sprite_scale: float = 0.85
+@export var flinger_sprite_color: Color = Color(1.0, 0.95, 0.55, 1)
+@export var flinger_shot_color: Color = Color(0.9, 0.75, 0.35, 0.6)
+
+
+func _make_flinger(enemy: Node) -> void:
+	enemy.name = "Flinger"
+	enemy.max_hp = flinger_hp
+	enemy.move_speed = flinger_move_speed
+	enemy.is_ranged = true
+	enemy.shot_damage = flinger_shot_damage
+	enemy.shot_color = flinger_shot_color
+	enemy.sprite_sheet = HUSK_CRAWLER_TEX
+	enemy.sprite_scale = flinger_sprite_scale
+	enemy.sprite_color = flinger_sprite_color
 
 
 # Called before add_child, so enemy._ready picks up the new HP and color.
