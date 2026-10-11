@@ -103,6 +103,11 @@ var drop_luck: int = 0
 # replaces it if its bonus beats bonus + forge, and the new weapon starts at 0.
 # Saved in SAVE_PATH [gear] weapon_forge (older saves load 0).
 @export var forge_costs: Array[int] = [5, 10, 20]
+# Bag (I opens it, inventory.gd): a weapon, armor or ring drop no better than
+# what's worn goes into the bag instead of breaking down, so it can be worn or
+# salvaged by hand later. Only once bag_size items are in it do such drops
+# auto-salvage as above. Saved in SAVE_PATH [bag] items (older saves load empty).
+@export var bag_size: int = 12
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
 # and a crackling halo behind the Player while rolling with the ring.
 @export var graze_spark_color: Color = Color(1, 0.8, 0.25, 1)
@@ -131,7 +136,7 @@ var drop_luck: int = 0
 # shockwave_y_scale) to match the top-down 2.5D floor; hit test uses the same shape.
 # With the ring worn too (full set, 3 pieces) the shockwave grows to the
 # full_set_* values: wider, harder and a hotter color.
-@export var set_name: String = "Hunter's Set"
+@export var gear_set_name: String = "Hunter's Set"
 @export var shockwave_radius: float = 120.0
 @export var shockwave_y_scale: float = 0.5
 @export var shockwave_damage: int = 5
@@ -283,6 +288,8 @@ var ring_rarity: int = 0
 var ring_value: int = 0
 # Skin Crystal from auto-salvage (see salvage_amounts).
 var materials: int = 0
+# Bag items, oldest first: {"kind": "weapon"/"armor"/"ring", "tier", "rarity", "value", "forge"}.
+var bag: Array[Dictionary] = []
 # Enemies already grazed by the current roll (Nerve Ring).
 var roll_hit_targets: Array[Node] = []
 var shockwave_time_left: float = 0.0
@@ -866,11 +873,11 @@ func _update_shockwave_ring() -> void:
 func _update_set_label() -> void:
 	_build_shockwave_ring()
 	if has_full_set():
-		set_label.text = "Set: %s 3/3 (big 3rd hit shockwave)" % set_name
-		print("Full set active: %s" % set_name)
+		set_label.text = "Set: %s 3/3 (big 3rd hit shockwave)" % gear_set_name
+		print("Full set active: %s" % gear_set_name)
 	elif has_set():
-		set_label.text = "Set: %s 2/3 (3rd hit shockwave, ring for more)" % set_name
-		print("Set active: %s" % set_name)
+		set_label.text = "Set: %s 2/3 (3rd hit shockwave, ring for more)" % gear_set_name
+		print("Set active: %s" % gear_set_name)
 	else:
 		set_label.text = "Set: none (weapon + armor)"
 
@@ -951,13 +958,13 @@ func gear_text(kind: String, tier: int, rarity: int, value: int) -> String:
 func equip_weapon(tier: int, rarity: int = 0, bonus: int = -1) -> void:
 	if bonus < 0:
 		bonus = weapon_damage_bonus[tier - 1]
-	# A drop no better than the current weapon is salvaged into Skin Crystal.
+	# A drop no better than the current weapon goes to the bag (or Skin Crystal).
 	if is_dead:
 		return
 	# The forge levels count, so a forged weapon is never swapped for a weaker one.
 	if weapon_tier > 0 and bonus <= weapon_bonus + weapon_forge:
 		print("Passed on %s (wearing +%d)" % [weapon_text(tier, rarity, bonus), weapon_bonus + weapon_forge])
-		salvage(rarity)
+		_bag_or_salvage("weapon", tier, rarity, bonus)
 		return
 	weapon_tier = tier
 	weapon_rarity = rarity
@@ -1018,12 +1025,12 @@ func forge_weapon() -> bool:
 func equip_armor(rarity: int = 0, value: int = -1) -> void:
 	if value < 0:
 		value = armor_damage_reduction
-	# A drop no better than the worn armor is salvaged into Skin Crystal.
+	# A drop no better than the worn armor goes to the bag (or Skin Crystal).
 	if is_dead:
 		return
 	if has_armor and value <= armor_value:
 		print("Passed on %s (wearing -%d)" % [armor_text(rarity, value), armor_value])
-		salvage(rarity)
+		_bag_or_salvage("armor", 1, rarity, value)
 		return
 	has_armor = true
 	armor_rarity = rarity
@@ -1043,7 +1050,7 @@ func equip_ring(rarity: int = 0, value: int = -1) -> void:
 		return
 	if has_ring and value <= ring_value:
 		print("Passed on %s (wearing %d)" % [ring_text(rarity, value), ring_value])
-		salvage(rarity)
+		_bag_or_salvage("ring", 1, rarity, value)
 		return
 	has_ring = true
 	ring_rarity = rarity
@@ -1055,7 +1062,68 @@ func equip_ring(rarity: int = 0, value: int = -1) -> void:
 	_save_gear()
 
 
-# Breaks a passed-on drop of this rarity down into Skin Crystal.
+# A passed-on drop goes into the bag, or breaks down when the bag is full.
+func _bag_or_salvage(kind: String, tier: int, rarity: int, value: int) -> void:
+	if bag.size() >= bag_size:
+		salvage(rarity)
+		return
+	bag.append({"kind": kind, "tier": tier, "rarity": rarity, "value": value, "forge": 0})
+	print("Bagged %s (%d/%d)" % [gear_text(kind, tier, rarity, value), bag.size(), bag_size])
+	_save_gear()
+	_spawn_salvage_popup("Bag: %s" % gear_text(kind, tier, rarity, value), rarity_colors[rarity])
+
+
+# What's worn in this kind's slot, as a bag item ({} when the slot is empty).
+func worn_item(kind: String) -> Dictionary:
+	match kind:
+		"armor":
+			return {"kind": kind, "tier": 1, "rarity": armor_rarity, "value": armor_value, "forge": 0} if has_armor else {}
+		"ring":
+			return {"kind": kind, "tier": 1, "rarity": ring_rarity, "value": ring_value, "forge": 0} if has_ring else {}
+	if weapon_tier == 0:
+		return {}
+	return {"kind": kind, "tier": weapon_tier, "rarity": weapon_rarity, "value": weapon_bonus, "forge": weapon_forge}
+
+
+# Wears bag item index even if it's worse; whatever was worn takes its bag slot.
+# A weapon keeps its forge level both ways.
+func wear_from_bag(index: int) -> void:
+	if is_dead or index < 0 or index >= bag.size():
+		return
+	var item: Dictionary = bag[index]
+	var old := worn_item(item.kind)
+	bag.remove_at(index)
+	if not old.is_empty():
+		bag.insert(index, old)
+	# Empty the slot so the equip below always takes the item.
+	match item.kind:
+		"armor":
+			has_armor = false
+			equip_armor(item.rarity, item.value)
+		"ring":
+			has_ring = false
+			equip_ring(item.rarity, item.value)
+		_:
+			weapon_tier = 0
+			weapon_forge = 0
+			equip_weapon(item.tier, item.rarity, item.value)
+			weapon_forge = item.forge
+			_update_weapon_label()
+			_save_gear()
+	play_pickup_sound()
+
+
+# Breaks bag item index down into Skin Crystal (a forged weapon's levels are lost).
+func salvage_from_bag(index: int) -> void:
+	if is_dead or index < 0 or index >= bag.size():
+		return
+	var item: Dictionary = bag[index]
+	bag.remove_at(index)
+	print("Salvaged %s from the bag" % gear_text(item.kind, item.tier, item.rarity, item.value))
+	salvage(item.rarity)
+
+
+# Breaks a drop of this rarity down into Skin Crystal.
 func salvage(rarity: int) -> void:
 	var amount := salvage_amounts[rarity]
 	materials += amount
@@ -1132,6 +1200,7 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "ring_value", ring_value)
 	cfg.set_value("gear", "pet_kind", pet_kind)
 	cfg.set_value("materials", "skin_crystal", materials)
+	cfg.set_value("bag", "items", bag)
 	cfg.save(SAVE_PATH)
 
 
@@ -1143,6 +1212,7 @@ func _load_gear() -> void:
 	# Saves from before salvage load with 0.
 	materials = maxi(0, cfg.get_value("materials", "skin_crystal", 0))
 	_update_material_label()
+	_load_bag(cfg.get_value("bag", "items", []))
 	var tier: int = clampi(cfg.get_value("gear", "weapon_tier", 0), 0, weapon_names.size())
 	var kind: int = clampi(cfg.get_value("gear", "pet_kind", 0), 0, pet_names.size())
 	if tier > 0:
@@ -1163,6 +1233,23 @@ func _load_gear() -> void:
 	if kind > 0:
 		equip_pet(kind)
 	print("Loaded save: weapon %d +%d forge %d, armor %s -%d, ring %s %d, pet %d, %d %s" % [weapon_tier, weapon_bonus, weapon_forge, has_armor, armor_value, has_ring, ring_value, pet_kind, materials, material_name])
+
+
+# Saved bag items, skipping any that don't look like gear.
+func _load_bag(items: Variant) -> void:
+	bag.clear()
+	if not items is Array:
+		return
+	for item in items:
+		if bag.size() >= bag_size:
+			break
+		if not item is Dictionary or not item.get("kind", "") in ["weapon", "armor", "ring"]:
+			continue
+		bag.append({"kind": item.kind,
+			"tier": clampi(item.get("tier", 1), 1, weapon_names.size()),
+			"rarity": clampi(item.get("rarity", 0), 0, RARITY_NAMES.size() - 1),
+			"value": maxi(1, item.get("value", 1)),
+			"forge": clampi(item.get("forge", 0), 0, forge_costs.size())})
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.

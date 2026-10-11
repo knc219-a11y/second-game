@@ -1,10 +1,12 @@
 extends CanvasLayer
 
-# I opens a read-only inventory over a paused game: the three worn gear slots
-# (rarity colored, with value and forge level), the pet, the set and the Skin
-# Crystal count. I or Esc closes it. Drops still auto-equip or auto-salvage on
-# pickup (player.gd), so this only shows what you carry. Built in code; it keeps
-# running while the tree is paused (process_mode always in test_map.tscn).
+# I opens the inventory over a paused game: the three worn gear slots (rarity
+# colored, with value and forge level), the pet, the set and the Skin Crystal
+# count, then a row of bag slots (player.gd bag: drops no better than what's
+# worn). Left/Right pick a bag item, X wears it (the worn one goes into the bag)
+# and C salvages it into Skin Crystal. I or Esc closes it. Better drops still
+# auto-equip on pickup. Built in code; it keeps running while the tree is
+# paused (process_mode always in test_map.tscn).
 
 const CALLUS_BLADE_ICON := preload("res://art/stage1/drops/s1_drop_callus_blade.png")
 const NERVE_RING_ICON := preload("res://art/stage1/drops/s1_drop_nerve_ring.png")
@@ -14,9 +16,19 @@ const CRYSTAL_ICON := preload("res://art/stage1/drops/s1_drop_skin_crystal.png")
 
 @export var empty_color: Color = Color(0.55, 0.55, 0.55, 1)
 @export var icon_size: float = 40.0
+@export var bag_cell_size: float = 64.0
+@export var bag_cell_gap: float = 12.0
+@export var bag_cell_color: Color = Color(0.2, 0.17, 0.15, 1)
+@export var cursor_color: Color = Color(1, 1, 1, 0.9)
 
 # Slot name -> [icon TextureRect, placeholder ColorRect, Label].
 var rows: Dictionary = {}
+# One per bag slot: [icon TextureRect, placeholder ColorRect, rarity bar ColorRect].
+var cells: Array = []
+var selected: int = 0
+var bag_heading: Label
+var detail: Label
+var cursor: ColorRect
 
 @onready var map: Node = get_parent()
 
@@ -30,13 +42,13 @@ func _ready() -> void:
 	add_child(dim)
 	var panel := ColorRect.new()
 	panel.color = Color(0.1, 0.08, 0.07, 0.92)
-	panel.position = Vector2(210, 145)
-	panel.size = Vector2(860, 430)
+	panel.position = Vector2(140, 30)
+	panel.size = Vector2(1000, 660)
 	add_child(panel)
 	var heading := _make_label(30)
 	heading.text = "Inventory"
 	heading.position = Vector2(0, 14)
-	heading.size = Vector2(860, 40)
+	heading.size = Vector2(1000, 40)
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(heading)
 	var y := 72.0
@@ -54,16 +66,51 @@ func _ready() -> void:
 		panel.add_child(swatch)
 		var label := _make_label(20)
 		label.position = Vector2(84, y)
-		label.size = Vector2(760, icon_size + 16)
+		label.size = Vector2(900, icon_size + 16)
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER if slot != "pet" else VERTICAL_ALIGNMENT_TOP
 		panel.add_child(label)
 		rows[slot] = [icon, swatch, label]
 		y += 52.0 if slot != "pet" else 64.0
+	bag_heading = _make_label(20)
+	bag_heading.position = Vector2(28, y + 4)
+	panel.add_child(bag_heading)
+	var cell_y := y + 40.0
+	cursor = ColorRect.new()
+	cursor.color = cursor_color
+	cursor.size = Vector2(bag_cell_size + 8, bag_cell_size + 8)
+	panel.add_child(cursor)
+	# map.player is still unset here (the map's @onready runs after its children).
+	for i in map.get_node("World/Player").bag_size:
+		var cell := ColorRect.new()
+		cell.color = bag_cell_color
+		cell.position = Vector2(28 + i * (bag_cell_size + bag_cell_gap), cell_y)
+		cell.size = Vector2(bag_cell_size, bag_cell_size)
+		panel.add_child(cell)
+		var icon := TextureRect.new()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.position = Vector2(8, 4)
+		icon.size = Vector2(bag_cell_size - 16, bag_cell_size - 16)
+		cell.add_child(icon)
+		var swatch := ColorRect.new()
+		swatch.position = Vector2(18, 14)
+		swatch.size = Vector2(bag_cell_size - 36, bag_cell_size - 36)
+		cell.add_child(swatch)
+		var bar := ColorRect.new()
+		bar.position = Vector2(0, bag_cell_size - 8)
+		bar.size = Vector2(bag_cell_size, 8)
+		cell.add_child(bar)
+		cells.append([icon, swatch, bar])
+	detail = _make_label(18)
+	detail.position = Vector2(28, cell_y + bag_cell_size + 14)
+	detail.size = Vector2(944, 60)
+	panel.add_child(detail)
 	var hint := _make_label(16)
-	hint.text = "Worse drops break into Skin Crystal on pickup.   I / Esc: close"
+	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   I / Esc: close"
 	hint.modulate = empty_color
-	hint.position = Vector2(0, 396)
-	hint.size = Vector2(860, 24)
+	hint.position = Vector2(0, 606)
+	hint.size = Vector2(1000, 48)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(hint)
 
@@ -72,6 +119,20 @@ func _process(_delta: float) -> void:
 	if visible:
 		if Input.is_action_just_pressed("inventory") or Input.is_action_just_pressed("pause"):
 			close()
+			return
+		var p: Node = map.player
+		if Input.is_action_just_pressed("move_left"):
+			selected = maxi(0, selected - 1)
+			refresh()
+		elif Input.is_action_just_pressed("move_right"):
+			selected = mini(p.bag_size - 1, selected + 1)
+			refresh()
+		elif Input.is_action_just_pressed("attack") and selected < p.bag.size():
+			p.wear_from_bag(selected)
+			refresh()
+		elif Input.is_action_just_pressed("interact") and selected < p.bag.size():
+			p.salvage_from_bag(selected)
+			refresh()
 	elif Input.is_action_just_pressed("inventory") and _can_open():
 		open()
 
@@ -124,11 +185,59 @@ func refresh() -> void:
 			p.pet_colors[i], SCAB_PUP_ICON if p.pet_kind == 2 else null, p.pet_colors[i])
 	else:
 		_set_row("pet", "Pet      none", empty_color, null, empty_color)
-	# The HUD's set line (player.gd _update_set_label). Read from there: the
-	# player's set_name export collides with Node.set_name() on outside access.
+	# The HUD's set line (player.gd _update_set_label).
 	var set_text: String = p.set_label.text.trim_prefix("Set: ")
 	_set_row("set", "Set      " + set_text, Color(1, 0.95, 0.6, 1) if p.has_set() else empty_color, null, Color(0, 0, 0, 0))
 	_set_row("material", "%s   %d" % [p.material_name, p.materials], Color(1, 1, 1, 1), CRYSTAL_ICON, empty_color)
+	_refresh_bag()
+
+
+func _refresh_bag() -> void:
+	var p: Node = map.player
+	bag_heading.text = "Bag   %d / %d" % [p.bag.size(), p.bag_size]
+	for i in cells.size():
+		var cell: Array = cells[i]
+		if i < p.bag.size():
+			var item: Dictionary = p.bag[i]
+			var icon := _item_icon(item)
+			cell[0].texture = icon
+			cell[0].visible = icon != null
+			cell[1].color = p.weapon_arc_color[item.tier - 1]
+			cell[1].visible = icon == null
+			cell[2].color = p.rarity_colors[item.rarity]
+			cell[2].visible = true
+		else:
+			cell[0].visible = false
+			cell[1].visible = false
+			cell[2].visible = false
+	var first: Control = cells[0][0].get_parent()
+	cursor.position = first.position + Vector2(selected * (bag_cell_size + bag_cell_gap) - 4, -4)
+	if selected >= p.bag.size():
+		detail.text = "Empty slot" if p.bag.size() > 0 else "Bag is empty"
+		detail.add_theme_color_override("font_color", empty_color)
+		return
+	var item: Dictionary = p.bag[selected]
+	var text: String = p.gear_text(item.kind, item.tier, item.rarity, item.value)
+	if item.forge > 0:
+		text += "  Forge +%d" % item.forge
+	var worn: Dictionary = p.worn_item(item.kind)
+	if worn.is_empty():
+		text += "   (nothing worn)"
+	else:
+		text += "   (worn: %s%s)" % [p.gear_text(worn.kind, worn.tier, worn.rarity, worn.value),
+			"  Forge +%d" % worn.forge if worn.forge > 0 else ""]
+	text += "\nX: wear   C: salvage for %d %s" % [p.salvage_amounts[item.rarity], p.material_name]
+	detail.text = text
+	detail.add_theme_color_override("font_color", p.rarity_colors[item.rarity])
+
+
+func _item_icon(item: Dictionary) -> Texture2D:
+	match item.kind:
+		"armor":
+			return ARMOR_ICON
+		"ring":
+			return NERVE_RING_ICON
+	return CALLUS_BLADE_ICON if item.tier == 1 else null
 
 
 # icon null shows a colored square in its place (gear without painted art yet).
