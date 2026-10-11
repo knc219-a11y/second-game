@@ -20,12 +20,9 @@ extends Node2D
 # Positions sit inside the walls and clear of rocks; enemies wait there until
 # the Player comes within their detect_range. An optional third value is a
 # pack number: when one of a pack spots the Player, the whole pack comes.
-# Stage 1 packs: 2 past the start, 3 north of the bone arch, and the camp: 2
-# with their leader (a bigger Husk Crawler that leaps, see _make_leader).
+# Stage 1 is played as areas instead (STAGE1_AREAS); its entry here is unused.
 const STAGES := [
-	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
-	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
-	["normal", Vector2(1250, 700), 2], ["leader", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
+	[],
 	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["tough", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
 	[["tough", Vector2(800, 450)], ["normal", Vector2(600, 760)], ["ranged", Vector2(1200, 130)], ["ranged", Vector2(1420, 640)], ["normal", Vector2(1150, 800)]],
 ]
@@ -36,6 +33,22 @@ const STAGES := [
 # Region names (lore: the town sits on a dead god's corpse; each stage is one
 # body lineage: 1 skin, 2 bone, 3 blood-flesh), shown on banners, gates and HUD.
 # Stage 1 brings normal (skin), stage 2 adds tough (bone), stage 3 ranged (blood).
+# Stage 1 areas 1-1, 1-2, 1-3, played in a row on the same map: clearing one
+# opens the exit to the next (HP and hits taken carry on, drops left on the
+# ground are cleared; no grade or chests in between). Clearing the last one clears Stage 1 (grade,
+# chests, unlock) as before. Packs: 1-1 a pair past the start and three north
+# of the bone arch; 1-2 three groups spread round the field; 1-3 adds the camp,
+# 2 with their leader (a bigger Husk Crawler that leaps, see _make_leader).
+const STAGE1_AREAS := [
+	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
+	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1]],
+	[["normal", Vector2(520, 180), 0], ["normal", Vector2(620, 130), 0],
+	["normal", Vector2(700, 700), 1], ["normal", Vector2(790, 780), 1], ["normal", Vector2(630, 800), 1],
+	["normal", Vector2(1250, 450), 2], ["normal", Vector2(1350, 380), 2]],
+	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
+	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
+	["normal", Vector2(1250, 700), 2], ["leader", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
+]
 const TOWN_NAME := "Hidehold"
 const STAGE_NAMES := ["Husk Flats", "Rib Field", "Vein Hollow"]
 const DUNGEON_NAME := "The Wound"
@@ -179,6 +192,8 @@ const SHOT_SCRIPT := preload("res://scripts/projectile.gd")
 @export var fade_time: float = 0.3
 
 var stage: int = 1
+# Current Stage 1 area (1..STAGE1_AREAS.size()); always 1 in other stages.
+var area: int = 1
 # Hub town: gate positions for stage 1..STAGES.size(), then the dungeon. The
 # highest unlocked stage is saved (section "progress", key "unlocked");
 # unlocked = STAGES.size() + 1 opens the dungeon gate.
@@ -349,7 +364,9 @@ func _enter_hub() -> void:
 
 func _spawn_stage() -> void:
 	stage_cleared = false
-	player.hits_taken = 0
+	# The grade counts hits over the whole stage, every area of it.
+	if area == 1:
+		player.hits_taken = 0
 	_build_rocks(STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()], STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	if stage == 1:
 		_dress_rocks()
@@ -357,11 +374,13 @@ func _spawn_stage() -> void:
 		_build_tent()
 		_build_torches()
 		_build_watchtower()
-		_spawn_hidden_cache()
+		if area == 1:
+			_spawn_hidden_cache()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	var packs := {}
-	for entry in STAGES[(stage - 1) % STAGES.size()]:
+	var entries: Array = STAGE1_AREAS[area - 1] if stage == 1 else STAGES[(stage - 1) % STAGES.size()]
+	for entry in entries:
 		var enemy := enemy_scene.instantiate()
 		if entry.size() > 2:
 			if not packs.has(entry[2]):
@@ -381,8 +400,8 @@ func _spawn_stage() -> void:
 	for pack in packs.values():
 		for enemy in pack:
 			enemy.pack_mates.assign(pack.filter(func(e): return e != enemy))
-	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
-	_show_banner("Stage %d  %s" % [stage, _stage_name()])
+	print("Stage %s: %d enemies" % [_stage_number(), enemies.get_child_count()])
+	_show_banner("Stage %s  %s" % [_stage_number(), _stage_name()])
 
 
 # Tiled floor on, grid off (or the other way round). Fills the layer once.
@@ -802,6 +821,15 @@ func _stage_name() -> String:
 	return STAGE_NAMES[(stage - 1) % STAGE_NAMES.size()]
 
 
+# "1-2" inside Stage 1, else just the stage number.
+func _stage_number() -> String:
+	return "%d-%d" % [stage, area] if stage == 1 else str(stage)
+
+
+func _area_count() -> int:
+	return STAGE1_AREAS.size() if stage == 1 else 1
+
+
 func _show_banner(text: String, color: Color = Color(1, 1, 1, 1), hold: float = 1.2) -> void:
 	stage_banner.text = text
 	stage_banner.modulate = color
@@ -851,11 +879,22 @@ func _update_kill_label() -> void:
 	elif endless_mode:
 		kill_label.text = DUNGEON_NAME + "   Kills: %d   Enemies at once: %d" % [kills, keep_alive]
 	else:
-		kill_label.text = "%s   Enemies left: %d" % [_stage_name(), _alive_enemies()]
+		kill_label.text = "%s %s   Enemies left: %d" % [_stage_name(), _stage_number(), _alive_enemies()]
 
 
 func _clear_stage() -> void:
 	stage_cleared = true
+	var exit_label := exit_gate.get_node("Label") as Label
+	exit_gate.position = exit_position
+	exit_gate.visible = true
+	if area < _area_count():
+		var next := "%d-%d" % [stage, area + 1]
+		print("Area %s clear" % _stage_number())
+		_show_banner("%s Clear!" % _stage_number(), Color(1, 1, 1, 1), clear_banner_time)
+		kill_label.text = "%s %s   Clear! On to %s on the right ->" % [_stage_name(), _stage_number(), next]
+		exit_label.text = next
+		return
+	exit_label.text = TOWN_NAME.to_upper()
 	var hits: int = player.hits_taken
 	var grade := "S" if hits <= grade_s_hits else ("A" if hits <= grade_a_hits else "B")
 	var best := _save_best_grade(grade)
@@ -863,8 +902,6 @@ func _clear_stage() -> void:
 	print("Stage %d clear: grade %s (%d hits), best %s" % [stage, grade, hits, best])
 	_show_banner("%s Clear!\nGrade %s  (%d hits)   Best %s" % [_stage_name(), grade, hits, best], GRADE_COLORS[grade], clear_banner_time)
 	kill_label.text = "%s   Clear! Back to %s on the right ->" % [_stage_name(), TOWN_NAME]
-	exit_gate.position = exit_position
-	exit_gate.visible = true
 	_spawn_chests(grade)
 
 
@@ -956,7 +993,7 @@ func _save_unlock(n: int) -> void:
 # Fade out, put the Player (and pet) back at the start, bring in the target
 # (0 = town, 1..STAGES.size() = that stage, above = the dungeon), fade in.
 # Drops and chests left on the ground are cleared.
-func _move_on(target: int) -> void:
+func _move_on(target: int, next_area: int = 1) -> void:
 	moving_on = true
 	exit_gate.visible = false
 	var tween := create_tween()
@@ -980,6 +1017,7 @@ func _move_on(target: int) -> void:
 		_enter_dungeon()
 	else:
 		stage = target
+		area = next_area
 		_spawn_stage()
 	_update_kill_label()
 	tween = create_tween()
@@ -1029,7 +1067,10 @@ func _physics_process(delta: float) -> void:
 					_move_on(i + 1)
 					return
 		elif stage_cleared and player.position.distance_to(exit_position) <= exit_radius:
-			_move_on(0)
+			if area < _area_count():
+				_move_on(stage, area + 1)
+			else:
+				_move_on(0)
 		return
 	var alive := _alive_enemies()
 	if alive >= keep_alive:
