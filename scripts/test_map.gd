@@ -406,6 +406,7 @@ func _update_blacksmith_label() -> void:
 
 func _enter_hub() -> void:
 	in_hub = true
+	player.drop_luck = 0
 	if blacksmith != null:
 		blacksmith.visible = true
 		_update_blacksmith_label()
@@ -446,6 +447,7 @@ func _spawn_stage() -> void:
 	# The grade counts hits over the whole stage, every area of it.
 	if area == 1:
 		player.hits_taken = 0
+		player.drop_luck = _replay_luck()
 	var rocks: Array = STAGE1_AREA_ROCKS[area - 1] if stage == 1 else STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()]
 	_build_rocks(rocks, STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	if stage == 1:
@@ -487,7 +489,30 @@ func _spawn_stage() -> void:
 		for enemy in pack:
 			enemy.pack_mates.assign(pack.filter(func(e): return e != enemy))
 	print("Stage %s: %d enemies" % [_stage_number(), enemies.get_child_count()])
-	_show_banner("Stage %s  %s" % [_stage_number(), _stage_name()])
+	var banner := "Stage %s  %s" % [_stage_number(), _stage_name()]
+	if area == 1 and player.drop_luck > 0:
+		banner += "\n%s" % _luck_text()
+	_show_banner(banner, Color(1, 1, 1, 1) if player.drop_luck == 0 else LUCK_COLOR)
+
+
+# Repeat-farming reward: replaying a stage already cleared gives drop luck +1
+# (player.gd luck_weight_shift), +2 once its best grade is S; an S clear adds
+# one more for that clear's chests. Shown on the stage and clear banners.
+const LUCK_COLOR := Color(0.6, 1, 0.75, 1)
+
+
+func _replay_luck() -> int:
+	var cfg := ConfigFile.new()
+	cfg.load(player.SAVE_PATH)
+	var best: String = cfg.get_value("grades", "stage_%d" % ((stage - 1) % STAGES.size() + 1), "")
+	if best == "":
+		return 0
+	return 2 if best == "S" else 1
+
+
+func _luck_text() -> String:
+	var w: Array[int] = player.luck_weights()
+	return "Drop luck +%d  (Rare %d%%  Legendary %d%%)" % [player.drop_luck, w[2], w[3]]
 
 
 # Tiled floor on, grid off (or the other way round). Fills the layer once.
@@ -998,8 +1023,13 @@ func _clear_stage() -> void:
 	var grade := "S" if hits <= s_hits else ("A" if hits <= a_hits else "B")
 	var best := _save_best_grade(grade)
 	_save_unlock(stage + 1)
-	print("Stage %d clear: grade %s (%d hits), best %s" % [stage, grade, hits, best])
-	_show_banner("%s Clear!\nGrade %s  (%d hits)   Best %s" % [_stage_name(), grade, hits, best], GRADE_COLORS[grade], clear_banner_time)
+	if grade == "S":
+		player.drop_luck = mini(player.drop_luck + 1, player.max_drop_luck)
+	print("Stage %d clear: grade %s (%d hits), best %s, drop luck %d" % [stage, grade, hits, best, player.drop_luck])
+	var text := "%s Clear!\nGrade %s  (%d hits)   Best %s" % [_stage_name(), grade, hits, best]
+	if player.drop_luck > 0:
+		text += "\nChests: " + _luck_text()
+	_show_banner(text, GRADE_COLORS[grade], clear_banner_time)
 	kill_label.text = "%s   Clear! Back to %s on the right ->" % [_stage_name(), TOWN_NAME]
 	_spawn_chests(grade)
 
@@ -1148,6 +1178,7 @@ func return_to_town() -> void:
 # respawn_delay.
 func _enter_dungeon() -> void:
 	endless_mode = true
+	player.drop_luck = 0
 	kills = 0
 	respawn_left = respawn_delay
 	_build_rocks(DUNGEON_ROCKS, DUNGEON_ROCK_COLOR)
