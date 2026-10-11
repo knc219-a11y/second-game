@@ -4,7 +4,8 @@ extends CanvasLayer
 # colored, with value and forge level), the pet, the set and the Skin Crystal
 # count, then a row of bag slots (player.gd bag: drops no better than what's
 # worn). Left/Right pick a bag item, X wears it (the worn one goes into the bag)
-# and C salvages it into Skin Crystal. I or Esc closes it. Better drops still
+# and C salvages it into Skin Crystal. Up/Down switches the active pet among the
+# kept ones (player.gd owned_pets). I or Esc closes it. Better drops still
 # auto-equip on pickup. Built in code; it keeps running while the tree is
 # paused (process_mode always in test_map.tscn).
 
@@ -70,7 +71,7 @@ func _ready() -> void:
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER if slot != "pet" else VERTICAL_ALIGNMENT_TOP
 		panel.add_child(label)
 		rows[slot] = [icon, swatch, label]
-		y += 52.0 if slot != "pet" else 64.0
+		y += 52.0 if slot != "pet" else 88.0
 	bag_heading = _make_label(20)
 	bag_heading.position = Vector2(28, y + 4)
 	panel.add_child(bag_heading)
@@ -107,7 +108,7 @@ func _ready() -> void:
 	detail.size = Vector2(944, 60)
 	panel.add_child(detail)
 	var hint := _make_label(16)
-	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   I / Esc: close"
+	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   Up / Down: switch pet   I / Esc: close"
 	hint.modulate = empty_color
 	hint.position = Vector2(0, 606)
 	hint.size = Vector2(1000, 48)
@@ -133,6 +134,10 @@ func _process(_delta: float) -> void:
 		elif Input.is_action_just_pressed("interact") and selected < p.bag.size():
 			p.salvage_from_bag(selected)
 			refresh()
+		elif Input.is_action_just_pressed("move_up"):
+			_switch_pet(-1)
+		elif Input.is_action_just_pressed("move_down"):
+			_switch_pet(1)
 	elif Input.is_action_just_pressed("inventory") and _can_open():
 		open()
 
@@ -181,7 +186,8 @@ func refresh() -> void:
 	if p.pet_kind > 0:
 		var i: int = p.pet_kind - 1
 		_set_row("pet", "Pet      %s\n         %s, %s %d every %.1fs" % [p.pet_names[i], p.pet_passive_text[i],
-			"spits" if p.pet_kind == 3 else "bites", p.pet_bite_damage[i], p.pet_bite_cooldown[i]],
+			"spits" if p.pet_kind == 3 else "bites", p.pet_bite_damage[i], p.pet_bite_cooldown[i]]
+			+ "\n         Kept: " + _kept_pets_text(),
 			p.pet_colors[i], SCAB_PUP_ICON if p.pet_kind == 2 else null, p.pet_colors[i])
 	else:
 		_set_row("pet", "Pet      none", empty_color, null, empty_color)
@@ -190,6 +196,27 @@ func refresh() -> void:
 	_set_row("set", "Set      " + set_text, Color(1, 0.95, 0.6, 1) if p.has_set() else empty_color, null, Color(0, 0, 0, 0))
 	_set_row("material", "%s   %d" % [p.material_name, p.materials], Color(1, 1, 1, 1), CRYSTAL_ICON, empty_color)
 	_refresh_bag()
+
+
+# The kept pets with the active one in brackets, e.g. "[Scab Pup]  Clot Imp".
+func _kept_pets_text() -> String:
+	var p: Node = map.player
+	var names: Array[String] = []
+	for k in p.owned_pets:
+		names.append("[%s]" % p.pet_names[k - 1] if k == p.pet_kind else p.pet_names[k - 1])
+	var text := "  ".join(names)
+	if p.owned_pets.size() > 1:
+		text += "   (Up / Down to switch)"
+	return text
+
+
+func _switch_pet(step: int) -> void:
+	var p: Node = map.player
+	if p.owned_pets.size() < 2:
+		return
+	var i: int = p.owned_pets.find(p.pet_kind)
+	p.equip_pet(p.owned_pets[posmod(i + step, p.owned_pets.size())])
+	refresh()
 
 
 func _refresh_bag() -> void:

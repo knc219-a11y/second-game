@@ -173,7 +173,8 @@ var drop_luck: int = 0
 # with a big pop, the Pup nibbles often for less, the Imp spits from afar (all
 # about 2 damage a second).
 # The Pup is rose, not the normal enemy's red, so it doesn't read as an enemy.
-# One pet at a time: walking over a different pet swaps to it. Kept across R (SAVE_PATH).
+# One pet at a time: walking over a different pet swaps to it, and every pet
+# obtained is kept in owned_pets (switch in the I inventory). Kept across R (SAVE_PATH).
 @export var pet_names: Array[String] = ["Marrow Cub", "Scab Pup", "Clot Imp"]
 @export var pet_colors: Array[Color] = [Color(0.96, 0.8, 0.62, 1), Color(1, 0.6, 0.72, 1), Color(0.75, 0.62, 1, 1)]
 @export var pet_bite_damage: Array[int] = [5, 2, 4]
@@ -307,6 +308,8 @@ var shockwave_time_left: float = 0.0
 var pet: Node2D = null
 # 0 = no pet, otherwise the index+1 of the pet above.
 var pet_kind: int = 0
+# Every pet kind obtained so far, in pickup order (one of each kind).
+var owned_pets: Array[int] = []
 var shake_strength: float = 0.0
 var shake_left: float = 0.0
 var dash_time_left: float = 0.0
@@ -1208,6 +1211,8 @@ func equip_pet(kind: int) -> void:
 		pet.queue_free()
 	pet = new_pet
 	pet_kind = kind
+	if not kind in owned_pets:
+		owned_pets.append(kind)
 	# Before add_child so pet.gd's base_color picks it up.
 	pet.get_node("Visual/Body").color = pet_colors[kind - 1]
 	pet.bite_damage = pet_bite_damage[kind - 1]
@@ -1217,7 +1222,7 @@ func equip_pet(kind: int) -> void:
 	pet.sprite_sheet = pet_sprite_sheets[kind - 1]
 	# Beside the Player in the y-sorted World, so it draws by its y like the rest.
 	get_parent().add_child(pet)
-	print("Picked up pet %s" % pet_names[kind - 1])
+	print("Pet now %s (owned %s)" % [pet_names[kind - 1], owned_pets])
 	pet_label.text = "Pet: %s (%s, %s %d every %.1fs)" % [pet_names[kind - 1], pet_passive_text[kind - 1], "spits" if pet.spits else "bites", pet.bite_damage, pet.bite_cooldown]
 	_save_gear()
 
@@ -1237,6 +1242,7 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "ring_rarity", ring_rarity)
 	cfg.set_value("gear", "ring_value", ring_value)
 	cfg.set_value("gear", "pet_kind", pet_kind)
+	cfg.set_value("gear", "owned_pets", owned_pets)
 	cfg.set_value("materials", "skin_crystal", materials)
 	cfg.set_value("bag", "items", bag)
 	cfg.save(SAVE_PATH)
@@ -1268,6 +1274,12 @@ func _load_gear() -> void:
 		equip_armor(clampi(cfg.get_value("gear", "armor_rarity", 0), 0, last), cfg.get_value("gear", "armor_value", armor_damage_reduction))
 	if cfg.get_value("gear", "ring", false):
 		equip_ring(clampi(cfg.get_value("gear", "ring_rarity", 0), 0, last), cfg.get_value("gear", "ring_value", ring_roll_damage))
+	# Saves from before pet storage keep just the active pet.
+	var owned: Variant = cfg.get_value("gear", "owned_pets", [])
+	if owned is Array:
+		for k in owned:
+			if k is int and k >= 1 and k <= pet_names.size() and not k in owned_pets:
+				owned_pets.append(k)
 	if kind > 0:
 		equip_pet(kind)
 	print("Loaded save: weapon %d +%d forge %d, armor %s -%d, ring %s %d, pet %d, %d %s" % [weapon_tier, weapon_bonus, weapon_forge, has_armor, armor_value, has_ring, ring_value, pet_kind, materials, material_name])
