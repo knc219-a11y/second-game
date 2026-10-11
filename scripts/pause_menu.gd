@@ -40,9 +40,10 @@ func _process(_delta: float) -> void:
 		_choose(options[selected])
 
 
-# Not while dead (R restarts there) or mid-fade between areas.
+# Not while dead (R restarts there), mid-fade between areas or while the
+# inventory (I) has the game paused (its Esc closes it instead).
 func _can_pause() -> bool:
-	return not map.player.is_dead and not map.moving_on
+	return not map.player.is_dead and not map.moving_on and not get_tree().paused
 
 
 func _open() -> void:

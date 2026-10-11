@@ -1,10 +1,11 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1"]
 [ext_resource type="Script" path="res://scripts/test_map.gd" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="2"]
 [ext_resource type="Script" path="res://scripts/pause_menu.gd" id="4"]
 [ext_resource type="TileSet" path="res://tilesets/stage1_terrain.tres" id="5"]
+[ext_resource type="Script" path="res://scripts/inventory.gd" id="6"]
 
 [sub_resource type="RectangleShape2D" id="Shape_WallTop"]
 size = Vector2(1680, 40)
@@ -364,3 +365,8 @@ modulate = Color(1, 1, 1, 0.7)
 theme_override_font_sizes/font_size = 20
 text = "Up/Down: choose    X / Enter: confirm    Esc: resume"
 horizontal_alignment = 1
+
+[node name="Inventory" type="CanvasLayer" parent="."]
+process_mode = 3
+layer = 10
+script = ExtResource("6")
