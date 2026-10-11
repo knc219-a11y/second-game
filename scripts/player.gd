@@ -146,6 +146,17 @@ var drop_luck: int = 0
 @export var full_set_radius: float = 170.0
 @export var full_set_damage: int = 10
 @export var full_set_color: Color = Color(1, 0.55, 0.2, 1)
+# Legendary weapon effect: with a Legendary weapon worn, the 3rd combo hit also
+# sends a small slash wave (projectile.tscn, pierce on) straight ahead along the
+# facing. It cuts every enemy on its line once for slash_wave_damage (weapon
+# bonus doesn't apply, no push) and stops at walls and rocks after
+# slash_wave_travel px. A small reach extension, not a second finisher.
+@export var slash_wave_damage: int = 6
+@export var slash_wave_speed: float = 420.0
+@export var slash_wave_travel: float = 240.0
+@export var slash_wave_color: Color = Color(1, 0.8, 0.25, 0.75)
+@export var slash_wave_core_color: Color = Color(1, 0.97, 0.8, 1)
+@export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 # Pets, one entry per kind (pet_kind 1, 2, 3). Each follows the Player, bites
 # nearby enemies for a little damage (see pet.gd) and lends a small form of its
 # monster's passive:
@@ -765,6 +776,8 @@ func _update_attack(delta: float) -> void:
 		# Set shockwave goes first so the finisher's own bigger knockback wins on its target.
 		if attack_phase != AttackPhase.ACTIVE and combo_index == combo_damage.size() - 1 and has_set():
 			_release_shockwave()
+		if attack_phase != AttackPhase.ACTIVE and combo_index == combo_damage.size() - 1 and has_legendary_weapon():
+			_release_slash_wave()
 		_set_attack_phase(AttackPhase.ACTIVE)
 		_apply_hits()
 	elif attack_time < _attack_total():
@@ -830,6 +843,31 @@ func _apply_hits() -> void:
 
 func _hit_damage() -> int:
 	return combo_damage[combo_index] + weapon_bonus + weapon_forge
+
+
+func has_legendary_weapon() -> bool:
+	return weapon_tier > 0 and weapon_rarity == RARITY_NAMES.size() - 1
+
+
+func _release_slash_wave() -> void:
+	var wave := projectile_scene.instantiate()
+	wave.hits_enemies = true
+	wave.pierce = true
+	wave.position = global_position + Vector2(facing * 30, 0)
+	wave.aim = Vector2(facing, 0)
+	wave.speed = slash_wave_speed
+	wave.damage = slash_wave_damage
+	wave.lifetime = slash_wave_travel / slash_wave_speed
+	wave.splash_color = slash_wave_color
+	wave.splash_size = 2.0
+	wave.get_node("Glow").color = slash_wave_color
+	wave.get_node("Core").color = slash_wave_core_color
+	# A tall thin sliver reads as a cut, not a ball; the hit box matches it.
+	for part in ["Glow", "Core"]:
+		wave.get_node(part).scale = Vector2(0.5, 2.2)
+	wave.get_node("Shadow").scale = Vector2(0.6, 1.0)
+	wave.get_node("CollisionShape2D").scale = Vector2(1.2, 3.5)
+	get_parent().add_child(wave)
 
 
 func has_set() -> bool:

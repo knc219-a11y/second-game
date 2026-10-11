@@ -13,7 +13,11 @@ extends Area2D
 # The enemy's shot sits on the enemy_shot layer, which the Player's basic attack
 # hitbox also sees: a swing that overlaps it destroys it (parry, with the
 # splash). Pet shots leave that layer, so swings never touch them.
+# The Player's Legendary slash wave (player.gd) sets pierce with hits_enemies:
+# it hurts each enemy it passes once and keeps flying (walls still stop it).
 var hits_enemies: bool = false
+var pierce: bool = false
+var pierced: Array[Node] = []
 var aim: Vector2 = Vector2.ZERO
 var direction: int = 1
 var speed: float = 150.0
@@ -47,8 +51,13 @@ func _physics_process(delta: float) -> void:
 		if target.is_queued_for_deletion():
 			continue
 		if hits_enemies:
+			if target in pierced:
+				continue
 			target.take_damage(damage, 0, 1.0, 2)
 			_splash()
+			if pierce:
+				pierced.append(target)
+				continue
 			queue_free()
 			return
 		if target.has_method("take_damage"):
