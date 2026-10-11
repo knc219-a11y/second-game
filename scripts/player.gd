@@ -85,11 +85,17 @@ const RARITY_NAMES: Array[String] = ["Common", "Magic", "Rare", "Legendary"]
 # what's worn breaks down into Skin Crystal on pickup, salvage_amounts[rarity]
 # of it (Common 1, Magic 2, Rare 4, Legendary 8). A "+N Skin Crystal" popup
 # rises above the Player in the drop's rarity color, and the HUD keeps the
-# count. Saved in SAVE_PATH [materials]; nothing spends it yet (blacksmith later).
+# count. Saved in SAVE_PATH [materials]; the town blacksmith spends it (forge_costs).
 @export var material_name: String = "Skin Crystal"
 @export var salvage_amounts: Array[int] = [1, 2, 4, 8]
 @export var salvage_popup_time: float = 0.9
 @export var salvage_popup_rise: float = 36.0
+# Town blacksmith (test_map.gd): forging the worn weapon costs forge_costs[level]
+# Skin Crystal for the next level (+1 damage per level on basic attack hits),
+# up to forge_costs.size() (+3). The level belongs to that weapon: a drop only
+# replaces it if its bonus beats bonus + forge, and the new weapon starts at 0.
+# Saved in SAVE_PATH [gear] weapon_forge (older saves load 0).
+@export var forge_costs: Array[int] = [5, 10, 20]
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
 # and a crackling halo behind the Player while rolling with the ring.
 @export var graze_spark_color: Color = Color(1, 0.8, 0.25, 1)
@@ -259,6 +265,8 @@ var weapon_tier: int = 0
 # Rarity (RARITY_NAMES index) and rolled damage bonus of the equipped weapon.
 var weapon_rarity: int = 0
 var weapon_bonus: int = 0
+# Blacksmith level of the equipped weapon (0..forge_costs.size()), +1 damage each.
+var weapon_forge: int = 0
 var has_armor: bool = false
 var has_ring: bool = false
 # Rarity and rolled value of the worn armor (damage taken less) and ring (graze damage).
@@ -807,7 +815,7 @@ func _apply_hits() -> void:
 
 
 func _hit_damage() -> int:
-	return combo_damage[combo_index] + weapon_bonus
+	return combo_damage[combo_index] + weapon_bonus + weapon_forge
 
 
 func has_set() -> bool:
@@ -929,20 +937,64 @@ func equip_weapon(tier: int, rarity: int = 0, bonus: int = -1) -> void:
 	# A drop no better than the current weapon is salvaged into Skin Crystal.
 	if is_dead:
 		return
-	if weapon_tier > 0 and bonus <= weapon_bonus:
-		print("Passed on %s (wearing +%d)" % [weapon_text(tier, rarity, bonus), weapon_bonus])
+	# The forge levels count, so a forged weapon is never swapped for a weaker one.
+	if weapon_tier > 0 and bonus <= weapon_bonus + weapon_forge:
+		print("Passed on %s (wearing +%d)" % [weapon_text(tier, rarity, bonus), weapon_bonus + weapon_forge])
 		salvage(rarity)
 		return
 	weapon_tier = tier
 	weapon_rarity = rarity
 	weapon_bonus = bonus
+	if weapon_forge > 0:
+		print("Forge +%d lost with the old weapon" % weapon_forge)
+	weapon_forge = 0
 	var i := tier - 1
 	print("Picked up %s" % weapon_text(tier, rarity, bonus))
-	weapon_label.text = "Weapon: %s damage" % weapon_text(tier, rarity, bonus)
 	weapon_label.add_theme_color_override("font_color", rarity_colors[rarity])
+	_update_weapon_label()
 	attack_arc.color = weapon_arc_color[i]
 	_update_set_label()
 	_save_gear()
+
+
+func _update_weapon_label() -> void:
+	var text := weapon_text(weapon_tier, weapon_rarity, weapon_bonus)
+	if weapon_forge > 0:
+		text += ", Forge +%d (+%d)" % [weapon_forge, weapon_bonus + weapon_forge]
+	weapon_label.text = "Weapon: %s damage" % text
+
+
+# The next forge level's cost in Skin Crystal, or -1 when unarmed or maxed.
+func forge_cost() -> int:
+	if weapon_tier == 0 or weapon_forge >= forge_costs.size():
+		return -1
+	return forge_costs[weapon_forge]
+
+
+# Blacksmith: spends Skin Crystal for +1 forge on the worn weapon. Pops up the
+# result above the Player either way; returns true if it forged.
+func forge_weapon() -> bool:
+	var cost := forge_cost()
+	if is_dead:
+		return false
+	if weapon_tier == 0:
+		_spawn_salvage_popup("No weapon to forge", rarity_colors[0])
+		return false
+	if cost < 0:
+		_spawn_salvage_popup("Forge maxed", rarity_colors[weapon_rarity])
+		return false
+	if materials < cost:
+		_spawn_salvage_popup("Need %d %s" % [cost, material_name], Color(1, 0.4, 0.35, 1))
+		return false
+	materials -= cost
+	weapon_forge += 1
+	print("Forged %s to +%d for %d %s (now %d)" % [weapon_text(weapon_tier, weapon_rarity, weapon_bonus), weapon_forge, cost, material_name, materials])
+	_update_material_label()
+	_update_weapon_label()
+	_save_gear()
+	play_pickup_sound(0.8)
+	_spawn_salvage_popup("Forge +%d!" % weapon_forge, rarity_colors[weapon_rarity])
+	return true
 
 
 # value < 0 means the plain base (a Common of armor_damage_reduction).
@@ -1054,6 +1106,7 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "weapon_tier", weapon_tier)
 	cfg.set_value("gear", "weapon_rarity", weapon_rarity)
 	cfg.set_value("gear", "weapon_bonus", weapon_bonus)
+	cfg.set_value("gear", "weapon_forge", weapon_forge)
 	cfg.set_value("gear", "armor", has_armor)
 	cfg.set_value("gear", "armor_rarity", armor_rarity)
 	cfg.set_value("gear", "armor_value", armor_value)
@@ -1078,7 +1131,12 @@ func _load_gear() -> void:
 	if tier > 0:
 		# Saves from before rarity load as a Common with the tier's plain bonus.
 		var rarity: int = clampi(cfg.get_value("gear", "weapon_rarity", 0), 0, RARITY_NAMES.size() - 1)
+		# Read before equip_weapon, which resets and saves it.
+		var forge: int = clampi(cfg.get_value("gear", "weapon_forge", 0), 0, forge_costs.size())
 		equip_weapon(tier, rarity, cfg.get_value("gear", "weapon_bonus", weapon_damage_bonus[tier - 1]))
+		weapon_forge = forge
+		_update_weapon_label()
+		_save_gear()
 	# Armor and ring from before rarity load as Common with the base value.
 	var last := RARITY_NAMES.size() - 1
 	if cfg.get_value("gear", "armor", false):
@@ -1087,7 +1145,7 @@ func _load_gear() -> void:
 		equip_ring(clampi(cfg.get_value("gear", "ring_rarity", 0), 0, last), cfg.get_value("gear", "ring_value", ring_roll_damage))
 	if kind > 0:
 		equip_pet(kind)
-	print("Loaded save: weapon %d +%d, armor %s -%d, ring %s %d, pet %d, %d %s" % [weapon_tier, weapon_bonus, has_armor, armor_value, has_ring, ring_value, pet_kind, materials, material_name])
+	print("Loaded save: weapon %d +%d forge %d, armor %s -%d, ring %s %d, pet %d, %d %s" % [weapon_tier, weapon_bonus, weapon_forge, has_armor, armor_value, has_ring, ring_value, pet_kind, materials, material_name])
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.
