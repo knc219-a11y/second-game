@@ -357,6 +357,7 @@ func _spawn_stage() -> void:
 		_build_tent()
 		_build_torches()
 		_build_watchtower()
+		_spawn_hidden_cache()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	var packs := {}
@@ -895,10 +896,37 @@ func _spawn_chests(grade: String) -> void:
 	print("Chests: %s%s" % [str(contents), " (special)" if special else ""])
 
 
-# Pick one: the other chests vanish empty.
+# Stage 1 hidden cache: one chest tucked behind the watchtower (the tower fades
+# when the Player walks behind it), there from the start of every visit. It
+# holds one upgrade the Player doesn't have yet (next weapon, armor or ring),
+# else a heal. Chests sit below the World, so the tower hides it.
+@export var hidden_cache_position: Vector2 = Vector2(1070, 790)
+
+
+func _spawn_hidden_cache() -> void:
+	var pool: Array = []
+	if player.weapon_tier < player.weapon_names.size():
+		pool.append(["weapon", player.weapon_tier + 1])
+	if not player.has_armor:
+		pool.append(["armor", 1])
+	if not player.has_ring:
+		pool.append(["ring", 1])
+	var content: Array = pool.pick_random() if not pool.is_empty() else ["heal", 1]
+	var chest := chest_scene.instantiate()
+	chest.name = "HiddenCache"
+	chest.set_meta("hidden_cache", true)
+	chest.kind = content[0]
+	chest.tier = content[1]
+	chest.position = hidden_cache_position
+	add_child(chest)
+	move_child(chest, world.get_index())
+	print("Hidden cache: %s" % [content])
+
+
+# Pick one: the other chests vanish empty (the hidden cache isn't one of them).
 func _on_chest_opened(opened_chest: Node) -> void:
 	for child in get_children():
-		if child.get_script() == CHEST_SCRIPT and child != opened_chest and not child.is_open:
+		if child.get_script() == CHEST_SCRIPT and child != opened_chest and not child.is_open and not child.has_meta("hidden_cache"):
 			child.vanish()
 
 
