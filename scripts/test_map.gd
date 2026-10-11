@@ -237,6 +237,10 @@ var unlocked: int = 1
 # "grades", key "stage_N", N = 1..STAGES.size()).
 @export var grade_s_hits: int = 0
 @export var grade_a_hits: int = 2
+# Stage 1 runs four areas (about 20 enemies and the boss) in one grade, so it
+# allows more hits for S and A than the one-screen stages.
+@export var stage1_grade_s_hits: int = 3
+@export var stage1_grade_a_hits: int = 8
 const GRADE_COLORS := {"S": Color(1, 0.85, 0.2, 1), "A": Color(0.5, 0.85, 1, 1), "B": Color(1, 1, 1, 1)}
 @export var clear_banner_time: float = 2.5
 # Reward chests by grade, placed in front of the exit: B = 1 chest, A = 2
@@ -934,7 +938,9 @@ func _clear_stage() -> void:
 		return
 	exit_label.text = TOWN_NAME.to_upper()
 	var hits: int = player.hits_taken
-	var grade := "S" if hits <= grade_s_hits else ("A" if hits <= grade_a_hits else "B")
+	var s_hits := stage1_grade_s_hits if stage == 1 else grade_s_hits
+	var a_hits := stage1_grade_a_hits if stage == 1 else grade_a_hits
+	var grade := "S" if hits <= s_hits else ("A" if hits <= a_hits else "B")
 	var best := _save_best_grade(grade)
 	_save_unlock(stage + 1)
 	print("Stage %d clear: grade %s (%d hits), best %s" % [stage, grade, hits, best])
