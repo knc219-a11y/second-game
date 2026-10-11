@@ -885,6 +885,8 @@ func _on_enemy_exiting(enemy: Node) -> void:
 	if enemy.get("hp") == null or enemy.hp > 0 or player.get("is_dead") == true:
 		return
 	kills += 1
+	if enemy.name == "Boss":
+		_boss_falls()
 	if not endless_mode:
 		# Kills in the same frame as the clear would overwrite its exit hint.
 		if not stage_cleared:
@@ -1281,6 +1283,26 @@ func _update_boss_bar() -> void:
 		while brood_called < boss_brood_at.size() and boss.hp <= boss.max_hp * boss_brood_at[brood_called]:
 			brood_called += 1
 			_call_brood(boss)
+
+
+# Boss kill finisher: once the killing blow's hitstop is over, the game runs
+# at boss_kill_time_scale for boss_kill_slowmo s (real time) with a big screen
+# shake, so the kill lands. Pausing holds the timer.
+@export var boss_kill_time_scale: float = 0.3
+@export var boss_kill_slowmo: float = 0.9
+@export var boss_kill_shake: float = 6.0
+
+
+func _boss_falls() -> void:
+	while player.in_hitstop:
+		await get_tree().process_frame
+	Engine.time_scale = boss_kill_time_scale
+	player._shake(boss_kill_shake)
+	print("Boss falls: slow motion")
+	await get_tree().create_timer(boss_kill_slowmo, false, false, true).timeout
+	# A hitstop running now sets the scale back itself when it ends.
+	if Engine.time_scale == boss_kill_time_scale:
+		Engine.time_scale = 1.0
 
 
 # Brood: each time the boss drops below one of boss_brood_at (fractions of its
