@@ -38,7 +38,8 @@ const STAGES := [
 # ground are cleared; no grade or chests in between). Clearing the last one clears Stage 1 (grade,
 # chests, unlock) as before. Packs: 1-1 a pair past the start and three north
 # of the bone arch; 1-2 three groups spread round the field; 1-3 adds the camp,
-# 2 with their leader (a bigger Husk Crawler that leaps, see _make_leader).
+# 2 with their leader (a bigger Husk Crawler that leaps, see _make_leader); then
+# the boss alone.
 const STAGE1_AREAS := [
 	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
 	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1]],
@@ -48,7 +49,10 @@ const STAGE1_AREAS := [
 	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
 	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
 	["normal", Vector2(1250, 700), 2], ["leader", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
+	[["boss", Vector2(1150, 450)]],
 ]
+# The last area is the boss fight (see _make_boss).
+const STAGE1_AREA_NAMES := ["1-1", "1-2", "1-3", "1-BOSS"]
 const TOWN_NAME := "Hidehold"
 const STAGE_NAMES := ["Husk Flats", "Rib Field", "Vein Hollow"]
 const DUNGEON_NAME := "The Wound"
@@ -302,6 +306,7 @@ var kills: int = 0
 func _ready() -> void:
 	base_keep_alive = keep_alive
 	_build_backdrop()
+	_build_boss_bar()
 	exit_gate.visible = false
 	if not endless_mode:
 		# The scene's placed enemies are only for endless mode; stages bring their own.
@@ -393,6 +398,8 @@ func _spawn_stage() -> void:
 			_make_ranged(enemy)
 		elif entry[0] == "leader":
 			_make_leader(enemy)
+		elif entry[0] == "boss":
+			_make_boss(enemy)
 		elif stage == 1:
 			# Stage 1 normal (Husk Crawler) wears its painted sprite.
 			enemy.sprite_sheet = HUSK_CRAWLER_TEX
@@ -823,7 +830,7 @@ func _stage_name() -> String:
 
 # "1-2" inside Stage 1, else just the stage number.
 func _stage_number() -> String:
-	return "%d-%d" % [stage, area] if stage == 1 else str(stage)
+	return STAGE1_AREA_NAMES[area - 1] if stage == 1 else str(stage)
 
 
 func _area_count() -> int:
@@ -888,7 +895,7 @@ func _clear_stage() -> void:
 	exit_gate.position = exit_position
 	exit_gate.visible = true
 	if area < _area_count():
-		var next := "%d-%d" % [stage, area + 1]
+		var next: String = STAGE1_AREA_NAMES[area]
 		print("Area %s clear" % _stage_number())
 		_show_banner("%s Clear!" % _stage_number(), Color(1, 1, 1, 1), clear_banner_time)
 		kill_label.text = "%s %s   Clear! On to %s on the right ->" % [_stage_name(), _stage_number(), next]
@@ -1056,6 +1063,7 @@ func _enter_dungeon() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_prop_fade()
+	_update_boss_bar()
 	if player.get("is_dead") == true:
 		return
 	if not endless_mode:
@@ -1138,6 +1146,85 @@ func _spawn_enemy() -> void:
 @export var leader_leap_distance: float = 130.0
 @export var leader_sprite_scale: float = 1.35
 @export var leader_drop_chance: float = 0.6
+
+
+# Stage 1 boss: a huge Husk Crawler (placeholder look until its own art). Its
+# swings are bigger (size_scale) and can't be stopped (super_armor), it barely
+# gets pushed, and it leaps from further away than the leader. Comes for the
+# Player from the start. Its HP shows on the boss bar.
+@export var boss_name: String = "Husk Matron"
+@export var boss_hp: int = 320
+@export var boss_damage: int = 15
+@export var boss_sprite_scale: float = 2.2
+@export var boss_size_scale: float = 1.6
+
+
+func _make_boss(enemy: Node) -> void:
+	enemy.name = "Boss"
+	enemy.max_hp = boss_hp
+	enemy.attack_damage = boss_damage
+	enemy.sprite_sheet = HUSK_CRAWLER_TEX
+	enemy.sprite_scale = boss_sprite_scale
+	enemy.size_scale = boss_size_scale
+	enemy.super_armor = true
+	enemy.knockback_distance = 6.0
+	enemy.move_speed = 75.0
+	enemy.detect_range = INF
+	enemy.lose_range = INF
+	enemy.stop_distance = 70.0
+	enemy.attack_range = 85.0
+	enemy.vertical_tolerance = 30.0
+	enemy.attack_startup = 0.5
+	enemy.attack_cooldown = 1.4
+	enemy.leap_distance = 200.0
+	enemy.leap_min = 140.0
+	enemy.leap_range = 300.0
+	enemy.leap_startup = 0.75
+	enemy.leap_cooldown = 4.0
+	enemy.drop_chance = 0.0
+	enemy.get_node("HpLabel").visible = false
+
+
+# Boss bar along the bottom of the screen: name, then HP as a red fill. Built
+# in code under the Hud, shown only while a boss is alive.
+const BOSS_BAR_RECT := Rect2(340, 664, 600, 16)
+var boss_bar: Control
+var boss_fill: ColorRect
+
+
+func _build_boss_bar() -> void:
+	boss_bar = Control.new()
+	boss_bar.name = "BossBar"
+	boss_bar.position = BOSS_BAR_RECT.position
+	boss_bar.visible = false
+	boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var back := ColorRect.new()
+	back.size = BOSS_BAR_RECT.size
+	back.color = Color(0, 0, 0, 0.6)
+	boss_bar.add_child(back)
+	boss_fill = ColorRect.new()
+	boss_fill.position = Vector2(2, 2)
+	boss_fill.size = BOSS_BAR_RECT.size - Vector2(4, 4)
+	boss_fill.color = Color(0.85, 0.15, 0.15, 1)
+	boss_bar.add_child(boss_fill)
+	var label := Label.new()
+	label.text = boss_name
+	label.position = Vector2(0, -30)
+	label.add_theme_font_size_override("font_size", 20)
+	label.add_theme_constant_override("outline_size", 6)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	boss_bar.add_child(label)
+	kill_label.get_parent().add_child(boss_bar)
+	# Under the fade so it fades with the screen.
+	kill_label.get_parent().move_child(boss_bar, fade.get_index())
+
+
+func _update_boss_bar() -> void:
+	var boss: Node = enemies.get_node_or_null("Boss")
+	var show: bool = boss != null and not boss.is_queued_for_deletion() and boss.hp > 0
+	boss_bar.visible = show
+	if show:
+		boss_fill.size.x = (BOSS_BAR_RECT.size.x - 4) * float(boss.hp) / boss.max_hp
 
 
 func _make_leader(enemy: Node) -> void:
