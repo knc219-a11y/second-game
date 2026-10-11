@@ -230,6 +230,13 @@ const LOCKED_GATE_COLOR := Color(0.55, 0.55, 0.55, 0.6)
 const DUNGEON_GATE_COLOR := Color(1, 0.35, 0.3, 0.8)
 var in_hub: bool = false
 var hub_gates: Array = []
+# Town blacksmith (placeholder anvil, town only): standing within
+# blacksmith_radius and pressing `interact` (C) forges the worn weapon +1 for
+# Skin Crystal (player.gd forge_weapon / forge_costs). Its label shows the next cost.
+const BLACKSMITH_POSITION := Vector2(330, 260)
+@export var blacksmith_radius: float = 80.0
+var blacksmith: Node2D = null
+var blacksmith_label: Label = null
 var unlocked: int = 1
 # Stage grade from hits taken (player.gd hits_taken) during the stage: S up to
 # grade_s_hits, A up to grade_a_hits, else B. Shown on the clear banner; the
@@ -334,6 +341,7 @@ func _ready() -> void:
 			enemies.remove_child(e)
 			e.free()
 		_build_hub_gates()
+		_build_blacksmith()
 		_enter_hub()
 	enemies.child_exiting_tree.connect(_on_enemy_exiting)
 	_update_kill_label()
@@ -354,8 +362,53 @@ func _build_hub_gates() -> void:
 		hub_gates.append(gate)
 
 
+# Placeholder anvil with a forge glow behind it, in the y-sorted World.
+func _build_blacksmith() -> void:
+	blacksmith = Node2D.new()
+	blacksmith.name = "Blacksmith"
+	blacksmith.position = BLACKSMITH_POSITION
+	var glow := Polygon2D.new()
+	glow.color = Color(1, 0.45, 0.1, 0.35)
+	glow.polygon = PackedVector2Array([Vector2(-46, -10), Vector2(-30, -62), Vector2(0, -76), Vector2(30, -62), Vector2(46, -10)])
+	blacksmith.add_child(glow)
+	var anvil := Polygon2D.new()
+	anvil.color = Color(0.48, 0.48, 0.54, 1)
+	anvil.polygon = PackedVector2Array([Vector2(-34, -40), Vector2(30, -40), Vector2(40, -30), Vector2(12, -26), Vector2(12, -14), Vector2(22, 0), Vector2(-22, 0), Vector2(-12, -14), Vector2(-12, -26), Vector2(-34, -30)])
+	blacksmith.add_child(anvil)
+	blacksmith_label = Label.new()
+	blacksmith_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blacksmith_label.position = Vector2(-150, -190)
+	blacksmith_label.size = Vector2(300, 50)
+	blacksmith_label.add_theme_constant_override("outline_size", 6)
+	blacksmith_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	blacksmith.add_child(blacksmith_label)
+	blacksmith.visible = false
+	world.add_child(blacksmith)
+
+
+func _near_blacksmith() -> bool:
+	return player.position.distance_to(BLACKSMITH_POSITION) <= blacksmith_radius
+
+
+func _update_blacksmith_label() -> void:
+	var cost: int = player.forge_cost()
+	var line := "Forge +%d: %d %s" % [player.weapon_forge + 1, cost, player.material_name]
+	if player.weapon_tier == 0:
+		line = "Bring a weapon to forge"
+	elif cost < 0:
+		line = "Forge maxed (+%d)" % player.weapon_forge
+	var near := _near_blacksmith()
+	if near and cost > 0:
+		line = "[C] " + line
+	blacksmith_label.text = "Blacksmith\n" + line
+	blacksmith_label.modulate = Color(1, 1, 1, 1) if near else Color(1, 1, 1, 0.6)
+
+
 func _enter_hub() -> void:
 	in_hub = true
+	if blacksmith != null:
+		blacksmith.visible = true
+		_update_blacksmith_label()
 	stage_cleared = false
 	exit_gate.visible = false
 	_build_rocks([])
@@ -1059,6 +1112,8 @@ func _move_on(target: int, next_area: int = 1) -> void:
 	in_hub = false
 	for gate in hub_gates:
 		gate.visible = false
+	if blacksmith != null:
+		blacksmith.visible = false
 	if target == 0:
 		_enter_hub()
 	elif target > STAGES.size():
@@ -1111,6 +1166,9 @@ func _physics_process(delta: float) -> void:
 		if moving_on:
 			return
 		if in_hub:
+			if _near_blacksmith() and Input.is_action_just_pressed("interact"):
+				player.forge_weapon()
+			_update_blacksmith_label()
 			for i in hub_gates.size():
 				if i + 1 <= unlocked and player.position.distance_to(hub_gates[i].position) <= exit_radius:
 					_move_on(i + 1)
