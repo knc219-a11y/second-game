@@ -397,6 +397,8 @@ func _spawn_stage() -> void:
 		_build_watchtower()
 		if area == 1:
 			_spawn_hidden_cache()
+		elif AREA_CACHES.has(area):
+			_spawn_hidden_cache(AREA_CACHES[area][0], AREA_CACHES[area][1])
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
 	var packs := {}
@@ -961,23 +963,28 @@ func _spawn_chests(grade: String) -> void:
 # holds one upgrade the Player doesn't have yet (next weapon, armor or ring),
 # else a heal. Chests sit below the World, so the tower hides it.
 @export var hidden_cache_position: Vector2 = Vector2(1070, 790)
+# 1-2 and 1-3 hide one more each, behind the north side of that area's rock
+# pillar (see STAGE1_AREA_ROCKS): [position, holds an upgrade]. 1-2's is only a
+# heal; 1-3's rolls an upgrade like 1-1's.
+const AREA_CACHES := {2: [Vector2(1100, 100), false], 3: [Vector2(1010, 360), true]}
 
 
-func _spawn_hidden_cache() -> void:
+func _spawn_hidden_cache(at: Vector2 = hidden_cache_position, upgrade: bool = true) -> void:
 	var pool: Array = []
-	if player.weapon_tier < player.weapon_names.size():
-		pool.append(["weapon", player.weapon_tier + 1])
-	if not player.has_armor:
-		pool.append(["armor", 1])
-	if not player.has_ring:
-		pool.append(["ring", 1])
+	if upgrade:
+		if player.weapon_tier < player.weapon_names.size():
+			pool.append(["weapon", player.weapon_tier + 1])
+		if not player.has_armor:
+			pool.append(["armor", 1])
+		if not player.has_ring:
+			pool.append(["ring", 1])
 	var content: Array = pool.pick_random() if not pool.is_empty() else ["heal", 1]
 	var chest := chest_scene.instantiate()
 	chest.name = "HiddenCache"
 	chest.set_meta("hidden_cache", true)
 	chest.kind = content[0]
 	chest.tier = content[1]
-	chest.position = hidden_cache_position
+	chest.position = at
 	add_child(chest)
 	move_child(chest, world.get_index())
 	print("Hidden cache: %s" % [content])
