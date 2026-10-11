@@ -143,11 +143,19 @@ extends CharacterBody2D
 @export var sprite_frame_size: Vector2 = Vector2(80, 64)
 @export var sprite_origin: Vector2 = Vector2(40, 60)
 @export var walk_fps: float = 8.0
+# Which frames play when (defaults: the Husk Crawler strip above). Idle and
+# walk loop; the wind-up, active and recovery lists are spread over their phase.
+@export var idle_frames: PackedInt32Array = PackedInt32Array([0])
+@export var idle_fps: float = 4.0
+@export var walk_frames: PackedInt32Array = PackedInt32Array([1, 0, 2, 0])
+@export var startup_frames: PackedInt32Array = PackedInt32Array([2])
+@export var active_frames: PackedInt32Array = PackedInt32Array([3])
+@export var recovery_frames: PackedInt32Array = PackedInt32Array([3])
 # How far (px) the sprite leans back in the wind-up and forward in the lunge.
 @export var windup_lean: float = 3.0
 @export var lunge_lean: float = 4.0
 @export var sprite_shard_color: Color = Color(0.82, 0.7, 0.6, 1)
-const WALK_FRAMES := [1, 0, 2, 0]
+var idle_time: float = 0.0
 const TINT_SHADER := preload("res://scripts/sprite_tint.gdshader")
 
 enum AttackPhase { NONE, STARTUP, ACTIVE, RECOVERY }
@@ -273,25 +281,36 @@ func _update_sprite(delta: float) -> void:
 	var lean := 0.0
 	if attack_phase != AttackPhase.NONE:
 		facing = int(attack_pivot.scale.x)
+		var lengths := _phase_lengths()
 		if attack_phase == AttackPhase.STARTUP:
-			frame = 2
+			frame = _spread(startup_frames, attack_time / lengths.x)
 			lean = -windup_lean
+		elif attack_phase == AttackPhase.ACTIVE:
+			frame = _spread(active_frames, (attack_time - lengths.x) / lengths.y)
+			lean = lunge_lean
 		else:
-			frame = 3
-			lean = lunge_lean if attack_phase == AttackPhase.ACTIVE else 0.0
-	elif knockback_time_left <= 0.0:
+			frame = _spread(recovery_frames, (attack_time - lengths.x - lengths.y) / attack_recovery)
+	else:
+		frame = idle_frames[int(idle_time * idle_fps) % idle_frames.size()]
+		idle_time += delta
+	if attack_phase == AttackPhase.NONE and knockback_time_left <= 0.0:
 		if absf(velocity.x) > 1.0:
 			facing = 1 if velocity.x > 0.0 else -1
 		elif is_chasing and is_instance_valid(player):
 			facing = 1 if player.global_position.x >= global_position.x else -1
 		if velocity.length() > 1.0:
 			walk_time += delta
-			frame = WALK_FRAMES[int(walk_time * walk_fps) % WALK_FRAMES.size()]
+			frame = walk_frames[int(walk_time * walk_fps) % walk_frames.size()]
 		else:
 			walk_time = 0.0
 	sprite.frame = frame
 	sprite.flip_h = facing < 0
 	sprite.position.x = lean * facing
+
+
+# The frame of list at progress t (0..1) through a phase.
+func _spread(list: PackedInt32Array, t: float) -> int:
+	return list[clampi(int(t * list.size()), 0, list.size() - 1)]
 
 
 # A mate still close to the Player keeps the rest of the pack coming, so a
@@ -481,8 +500,8 @@ func _start_leap() -> void:
 		player.play_warn_sound(2)
 
 
-func _update_attack(delta: float) -> void:
-	attack_time += delta
+# Lengths (s) of the current attack's wind-up and active phases.
+func _phase_lengths() -> Vector2:
 	var startup := counter_startup if is_counter else attack_startup
 	var active := attack_active
 	if is_ranged:
@@ -490,6 +509,14 @@ func _update_attack(delta: float) -> void:
 	if is_leaping:
 		startup = leap_startup
 		active = leap_time
+	return Vector2(startup, active)
+
+
+func _update_attack(delta: float) -> void:
+	attack_time += delta
+	var lengths := _phase_lengths()
+	var startup := lengths.x
+	var active := lengths.y
 	if attack_time < startup:
 		_set_attack_phase(AttackPhase.STARTUP)
 	elif attack_time < startup + active:

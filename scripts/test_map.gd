@@ -77,6 +77,7 @@ const STAGE_FLOOR_COLORS := [Color(0.4, 0.3, 0.29, 1), Color(0.2, 0.19, 0.18, 1)
 # Stage 1 normal enemy (Husk Crawler): 4 frames of 80x64, origin at the feet
 # centre (40,60); see enemy.gd sprite_sheet.
 const HUSK_CRAWLER_TEX := preload("res://art/stage1/enemies/s1_husk_crawler.png")
+const BOSS_TEX := preload("res://art/stage1/enemies/s1_boss_husk_matron.png")
 const ROCK_PILE_TEX := preload("res://art/stage1/props/s1_rock_pile.png")
 const ROCK_PILLAR_TEX := preload("res://art/stage1/props/s1_rock_pillar.png")
 const ROCK_PILE_OFFSET := Vector2(-64, -92)
@@ -1149,31 +1150,42 @@ func _spawn_enemy() -> void:
 @export var leader_drop_chance: float = 0.6
 
 
-# Stage 1 boss: a huge Husk Crawler (placeholder look until its own art). Its
+# Stage 1 boss: Husk Matron, a huge clawed husk (art/stage1/enemies/
+# s1_boss_husk_matron.png: 15 frames of 248x177, feet at 98,175, facing right;
+# 0-3 idle, 4-7 walk, 8-11 claw raised, 12-13 slam, 14 recover). Its
 # swings are bigger (size_scale) and can't be stopped (super_armor), it barely
 # gets pushed, and it leaps from further away than the leader. Comes for the
 # Player from the start. Its HP shows on the boss bar.
 @export var boss_name: String = "Husk Matron"
 @export var boss_hp: int = 320
 @export var boss_damage: int = 15
-@export var boss_sprite_scale: float = 2.2
-@export var boss_size_scale: float = 1.6
+@export var boss_size_scale: float = 1.9
 
 
 func _make_boss(enemy: Node) -> void:
 	enemy.name = "Boss"
 	enemy.max_hp = boss_hp
 	enemy.attack_damage = boss_damage
-	enemy.sprite_sheet = HUSK_CRAWLER_TEX
-	enemy.sprite_scale = boss_sprite_scale
+	enemy.sprite_sheet = BOSS_TEX
+	enemy.sprite_frame_size = Vector2(248, 177)
+	enemy.sprite_origin = Vector2(98, 175)
+	enemy.idle_frames = PackedInt32Array([0, 1, 2, 3])
+	enemy.idle_fps = 5.0
+	enemy.walk_frames = PackedInt32Array([4, 5, 6, 7])
+	enemy.walk_fps = 7.0
+	enemy.startup_frames = PackedInt32Array([8, 9, 10, 11])
+	enemy.active_frames = PackedInt32Array([12, 13])
+	enemy.recovery_frames = PackedInt32Array([14])
+	enemy.windup_lean = 0.0
+	enemy.lunge_lean = 0.0
 	enemy.size_scale = boss_size_scale
 	enemy.super_armor = true
 	enemy.knockback_distance = 6.0
 	enemy.move_speed = 75.0
 	enemy.detect_range = INF
 	enemy.lose_range = INF
-	enemy.stop_distance = 70.0
-	enemy.attack_range = 85.0
+	enemy.stop_distance = 85.0
+	enemy.attack_range = 100.0
 	enemy.vertical_tolerance = 30.0
 	enemy.attack_startup = 0.5
 	enemy.attack_cooldown = 1.4
