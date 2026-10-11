@@ -11,8 +11,8 @@ signal opened(chest: Area2D)
 # "ring" or "heal". The name above the chest shows what is inside.
 @export var kind: String = "heal"
 @export var tier: int = 1
-# A weapon chest rolls its rarity and bonus up front (player.gd roll_weapon) so
-# the label names exactly what comes out.
+# A weapon, armor or ring chest rolls its rarity and value up front (player.gd
+# roll_gear) so the label names exactly what comes out.
 var rarity: int = 0
 var bonus: int = 0
 # Gold chest for the S-grade special-effect item.
@@ -27,8 +27,8 @@ var is_open: bool = false
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	var player := get_tree().get_first_node_in_group("player")
-	if kind == "weapon" and player != null:
-		var roll: Array = player.roll_weapon(tier)
+	if kind in ["weapon", "armor", "ring"] and player != null:
+		var roll: Array = player.roll_gear(kind, tier)
 		rarity = roll[0]
 		bonus = roll[1]
 		$ItemLabel.modulate = player.rarity_colors[rarity]
@@ -42,12 +42,8 @@ func _ready() -> void:
 func item_name() -> String:
 	var player := get_tree().get_first_node_in_group("player")
 	match kind:
-		"weapon":
-			return player.weapon_text(tier, rarity, bonus) if player else "Weapon"
-		"armor":
-			return player.armor_name if player else "Armor"
-		"ring":
-			return player.ring_name if player else "Ring"
+		"weapon", "armor", "ring":
+			return player.gear_text(kind, tier, rarity, bonus) if player else kind.capitalize()
 	# The heal shows as Stage 1's regen fiber there (loot.gd draws it the same way).
 	var map := get_tree().current_scene
 	if map != null and map.has_method("is_stage_one") and map.is_stage_one():
@@ -71,8 +67,12 @@ func _on_area_entered(area: Area2D) -> void:
 			loot.get_node("Visual/Sword").color = target.weapon_arc_color[tier - 1]
 		"armor":
 			loot.is_armor = true
+			loot.rarity = rarity
+			loot.bonus = bonus
 		"ring":
 			loot.is_ring = true
+			loot.rarity = rarity
+			loot.bonus = bonus
 		_:
 			loot.is_heal = true
 	var parent := get_parent()

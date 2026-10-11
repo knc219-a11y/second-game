@@ -50,10 +50,10 @@ extends CharacterBody2D
 @export var drop_chance: float = 0.25
 @export var drop_tier: int = 1
 # Separate, rarer roll for the Player's armor (any enemy, tough included).
-# No drop once the Player wears it.
-@export var armor_drop_chance: float = 0.12
-# Separate, rarer roll for the Player's ring (any enemy). No drop once worn.
-@export var ring_drop_chance: float = 0.1
+# Like weapons it keeps dropping once worn: each drop rolls a rarity and value.
+@export var armor_drop_chance: float = 0.08
+# Separate, rarer roll for the Player's ring (any enemy), also rolled and kept dropping.
+@export var ring_drop_chance: float = 0.07
 # Separate, rare roll for a pet of kind pet_drop_kind (player.gd pet_names):
 # normal enemies drop the Scab Pup (2); test_map.gd gives the tough variant the
 # Marrow Cub (1) and its own chance. No drop while the Player has that same pet.
@@ -735,7 +735,7 @@ func _try_drop_loot() -> void:
 
 
 func _try_drop_armor() -> void:
-	if not is_instance_valid(player) or player.has_armor:
+	if not is_instance_valid(player):
 		return
 	if randf() >= armor_drop_chance:
 		return
@@ -750,7 +750,7 @@ func _try_drop_armor() -> void:
 
 
 func _try_drop_ring() -> void:
-	if not is_instance_valid(player) or player.has_ring:
+	if not is_instance_valid(player):
 		return
 	if randf() >= ring_drop_chance:
 		return

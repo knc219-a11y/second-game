@@ -64,14 +64,21 @@ const RARITY_NAMES: Array[String] = ["Common", "Magic", "Rare", "Legendary"]
 @export var rarity_bonus_min: Array[int] = [-1, 0, 1, 2]
 @export var rarity_bonus_max: Array[int] = [0, 1, 2, 2]
 # Second slot: armor any enemy can rarely drop (see enemy.armor_drop_chance).
-# Once worn, every enemy hit deals armor_damage_reduction less (10 -> 8), about
-# as small a step as one weapon tier. One armor only for now, kept across R (SAVE_PATH).
+# Once worn, every enemy hit deals armor_value less (10 -> 8 at the base 2),
+# about as small a step as one weapon tier. Kept across R (SAVE_PATH).
+# Armor rolls a rarity too, in a tighter range so it never gets big: base
+# armor_damage_reduction + armor_bonus_min..max = Common 1~2, Magic 2, Rare
+# 2~3, Legendary 3~4. Worn only if its value beats the current one.
 @export var armor_name: String = "Godhide Armor"
 @export var armor_damage_reduction: int = 2
+@export var armor_bonus_min: Array[int] = [-1, 0, 0, 1]
+@export var armor_bonus_max: Array[int] = [0, 0, 1, 2]
 # Third slot: a ring any enemy can rarely drop (see enemy.ring_drop_chance).
-# Once worn, rolling through an enemy grazes it for ring_roll_damage (once per
+# Once worn, rolling through an enemy grazes it for ring_value (once per
 # enemy per roll, no push, so it doesn't set off a normal enemy's counter).
 # Small on its own; it mostly turns a dodge into a little damage. Kept across R (SAVE_PATH).
+# Rolls like a weapon around ring_roll_damage (rarity_bonus_min..max):
+# Common 2~3, Magic 3~4, Rare 4~5, Legendary 5.
 @export var ring_name: String = "Nerve Ring"
 @export var ring_roll_damage: int = 3
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
@@ -245,6 +252,11 @@ var weapon_rarity: int = 0
 var weapon_bonus: int = 0
 var has_armor: bool = false
 var has_ring: bool = false
+# Rarity and rolled value of the worn armor (damage taken less) and ring (graze damage).
+var armor_rarity: int = 0
+var armor_value: int = 0
+var ring_rarity: int = 0
+var ring_value: int = 0
 # Enemies already grazed by the current roll (Nerve Ring).
 var roll_hit_targets: Array[Node] = []
 var shockwave_time_left: float = 0.0
@@ -640,7 +652,7 @@ func _set_passing_enemies(on: bool) -> void:
 
 
 # Nerve Ring: every enemy hurtbox the Player's hurtbox touches mid-roll takes
-# ring_roll_damage once this roll, with no knockback.
+# ring_value once this roll, with no knockback.
 func _roll_graze() -> void:
 	var hurt_shape: CollisionShape2D = $Hurtbox/CollisionShape2D
 	var query := PhysicsShapeQueryParameters2D.new()
@@ -658,7 +670,7 @@ func _roll_graze() -> void:
 		# Spark between the two hurtbox centers, i.e. where they rub.
 		var enemy_center: Vector2 = hit.collider.get_node("CollisionShape2D").global_position
 		_spawn_graze_spark((hurt_shape.global_position + enemy_center) / 2.0)
-		target.take_damage(ring_roll_damage, 0, 1.0, 2)
+		target.take_damage(ring_value, 0, 1.0, 2)
 
 
 # One-off star burst in the world (not on the enemy, which may die from the graze).
@@ -835,8 +847,8 @@ func _update_set_label() -> void:
 		set_label.text = "Set: none (weapon + armor)"
 
 
-# Rolls a weapon drop of this tier: [rarity, bonus] (see rarity_weights).
-func roll_weapon(tier: int) -> Array:
+# Picks a rarity by rarity_weights (shared by weapon, armor and ring drops).
+func roll_rarity() -> int:
 	var total := 0
 	for w in rarity_weights:
 		total += w
@@ -845,13 +857,56 @@ func roll_weapon(tier: int) -> Array:
 	while pick >= rarity_weights[rarity]:
 		pick -= rarity_weights[rarity]
 		rarity += 1
+	return rarity
+
+
+# Rolls a weapon drop of this tier: [rarity, bonus] (see rarity_weights).
+func roll_weapon(tier: int) -> Array:
+	var rarity := roll_rarity()
 	var base := weapon_damage_bonus[tier - 1]
 	var bonus := maxi(1, base + randi_range(rarity_bonus_min[rarity], rarity_bonus_max[rarity]))
 	return [rarity, bonus]
 
 
+func roll_armor() -> Array:
+	var rarity := roll_rarity()
+	return [rarity, maxi(1, armor_damage_reduction + randi_range(armor_bonus_min[rarity], armor_bonus_max[rarity]))]
+
+
+func roll_ring() -> Array:
+	var rarity := roll_rarity()
+	return [rarity, maxi(1, ring_roll_damage + randi_range(rarity_bonus_min[rarity], rarity_bonus_max[rarity]))]
+
+
+# A drop of this kind ("weapon", "armor" or "ring"): [rarity, value].
+func roll_gear(kind: String, tier: int = 1) -> Array:
+	match kind:
+		"armor":
+			return roll_armor()
+		"ring":
+			return roll_ring()
+	return roll_weapon(tier)
+
+
 func weapon_text(tier: int, rarity: int, bonus: int) -> String:
 	return "%s %s +%d" % [RARITY_NAMES[rarity], weapon_names[tier - 1], bonus]
+
+
+func armor_text(rarity: int, value: int) -> String:
+	return "%s %s -%d" % [RARITY_NAMES[rarity], armor_name, value]
+
+
+func ring_text(rarity: int, value: int) -> String:
+	return "%s %s %d" % [RARITY_NAMES[rarity], ring_name, value]
+
+
+func gear_text(kind: String, tier: int, rarity: int, value: int) -> String:
+	match kind:
+		"armor":
+			return armor_text(rarity, value)
+		"ring":
+			return ring_text(rarity, value)
+	return weapon_text(tier, rarity, value)
 
 
 # bonus < 0 means the tier's plain bonus (a Common of weapon_damage_bonus).
@@ -874,22 +929,37 @@ func equip_weapon(tier: int, rarity: int = 0, bonus: int = -1) -> void:
 	_save_gear()
 
 
-func equip_armor() -> void:
-	if has_armor or is_dead:
+# value < 0 means the plain base (a Common of armor_damage_reduction).
+func equip_armor(rarity: int = 0, value: int = -1) -> void:
+	if value < 0:
+		value = armor_damage_reduction
+	# A drop no better than the worn armor is just picked up and gone.
+	if is_dead or (has_armor and value <= armor_value):
+		print("Passed on %s (wearing -%d)" % [armor_text(rarity, value), armor_value])
 		return
 	has_armor = true
-	print("Picked up %s (-%d damage taken)" % [armor_name, armor_damage_reduction])
-	armor_label.text = "Armor: %s (-%d damage taken)" % [armor_name, armor_damage_reduction]
+	armor_rarity = rarity
+	armor_value = value
+	print("Picked up %s" % armor_text(rarity, value))
+	armor_label.text = "Armor: %s damage taken" % armor_text(rarity, value)
+	armor_label.add_theme_color_override("font_color", rarity_colors[rarity])
 	_update_set_label()
 	_save_gear()
 
 
-func equip_ring() -> void:
-	if has_ring or is_dead:
+# value < 0 means the plain base (a Common of ring_roll_damage).
+func equip_ring(rarity: int = 0, value: int = -1) -> void:
+	if value < 0:
+		value = ring_roll_damage
+	if is_dead or (has_ring and value <= ring_value):
+		print("Passed on %s (wearing %d)" % [ring_text(rarity, value), ring_value])
 		return
 	has_ring = true
-	print("Picked up %s (roll through enemies: %d damage)" % [ring_name, ring_roll_damage])
-	ring_label.text = "Ring: %s (roll graze %d)" % [ring_name, ring_roll_damage]
+	ring_rarity = rarity
+	ring_value = value
+	print("Picked up %s" % ring_text(rarity, value))
+	ring_label.text = "Ring: %s roll graze" % ring_text(rarity, value)
+	ring_label.add_theme_color_override("font_color", rarity_colors[rarity])
 	_update_set_label()
 	_save_gear()
 
@@ -928,7 +998,11 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "weapon_rarity", weapon_rarity)
 	cfg.set_value("gear", "weapon_bonus", weapon_bonus)
 	cfg.set_value("gear", "armor", has_armor)
+	cfg.set_value("gear", "armor_rarity", armor_rarity)
+	cfg.set_value("gear", "armor_value", armor_value)
 	cfg.set_value("gear", "ring", has_ring)
+	cfg.set_value("gear", "ring_rarity", ring_rarity)
+	cfg.set_value("gear", "ring_value", ring_value)
 	cfg.set_value("gear", "pet_kind", pet_kind)
 	cfg.save(SAVE_PATH)
 
@@ -943,13 +1017,15 @@ func _load_gear() -> void:
 		# Saves from before rarity load as a Common with the tier's plain bonus.
 		var rarity: int = clampi(cfg.get_value("gear", "weapon_rarity", 0), 0, RARITY_NAMES.size() - 1)
 		equip_weapon(tier, rarity, cfg.get_value("gear", "weapon_bonus", weapon_damage_bonus[tier - 1]))
+	# Armor and ring from before rarity load as Common with the base value.
+	var last := RARITY_NAMES.size() - 1
 	if cfg.get_value("gear", "armor", false):
-		equip_armor()
+		equip_armor(clampi(cfg.get_value("gear", "armor_rarity", 0), 0, last), cfg.get_value("gear", "armor_value", armor_damage_reduction))
 	if cfg.get_value("gear", "ring", false):
-		equip_ring()
+		equip_ring(clampi(cfg.get_value("gear", "ring_rarity", 0), 0, last), cfg.get_value("gear", "ring_value", ring_roll_damage))
 	if kind > 0:
 		equip_pet(kind)
-	print("Loaded save: weapon %d +%d, armor %s, ring %s, pet %d" % [weapon_tier, weapon_bonus, has_armor, has_ring, pet_kind])
+	print("Loaded save: weapon %d +%d, armor %s -%d, ring %s %d, pet %d" % [weapon_tier, weapon_bonus, has_armor, armor_value, has_ring, ring_value, pet_kind])
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.
@@ -1038,7 +1114,7 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	hits_taken += 1
 	if has_armor:
 		# Never below 1 so armor can't make a hit free.
-		amount = maxi(amount - armor_damage_reduction, 1)
+		amount = maxi(amount - armor_value, 1)
 	hp = maxi(hp - amount, 0)
 	hp_label.text = str(hp)
 	print("Player HP: %d" % hp)
