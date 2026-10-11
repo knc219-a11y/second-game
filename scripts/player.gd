@@ -81,6 +81,15 @@ const RARITY_NAMES: Array[String] = ["Common", "Magic", "Rare", "Legendary"]
 # Common 2~3, Magic 3~4, Rare 4~5, Legendary 5.
 @export var ring_name: String = "Nerve Ring"
 @export var ring_roll_damage: int = 3
+# Auto-salvage (Dungeon Quest style): a weapon, armor or ring drop no better than
+# what's worn breaks down into Skin Crystal on pickup, salvage_amounts[rarity]
+# of it (Common 1, Magic 2, Rare 4, Legendary 8). A "+N Skin Crystal" popup
+# rises above the Player in the drop's rarity color, and the HUD keeps the
+# count. Saved in SAVE_PATH [materials]; nothing spends it yet (blacksmith later).
+@export var material_name: String = "Skin Crystal"
+@export var salvage_amounts: Array[int] = [1, 2, 4, 8]
+@export var salvage_popup_time: float = 0.9
+@export var salvage_popup_rise: float = 36.0
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
 # and a crackling halo behind the Player while rolling with the ring.
 @export var graze_spark_color: Color = Color(1, 0.8, 0.25, 1)
@@ -257,6 +266,8 @@ var armor_rarity: int = 0
 var armor_value: int = 0
 var ring_rarity: int = 0
 var ring_value: int = 0
+# Skin Crystal from auto-salvage (see salvage_amounts).
+var materials: int = 0
 # Enemies already grazed by the current roll (Nerve Ring).
 var roll_hit_targets: Array[Node] = []
 var shockwave_time_left: float = 0.0
@@ -298,6 +309,7 @@ var whirl_hit_targets: Array[Node] = []
 @onready var set_label: Label = $Hud/SetLabel
 @onready var pet_label: Label = $Hud/PetLabel
 @onready var skill_label: Label = $Hud/SkillLabel
+@onready var material_label: Label = $Hud/MaterialLabel
 # Placeholder streak behind the Player while dashing (fades after).
 @onready var dash_trail: Polygon2D = $DashTrail
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
@@ -324,6 +336,7 @@ func _ready() -> void:
 	_build_whirl_ring()
 	dash_shape.size = dash_hit_size
 	_update_skill_label()
+	_update_material_label()
 	# Deferred: equip_pet adds the pet to the map, which is still adding its children now.
 	_load_gear.call_deferred()
 	hit_sound.stream = _synth_sound(0.07, 220.0, 90.0, 0.6)
@@ -913,9 +926,12 @@ func gear_text(kind: String, tier: int, rarity: int, value: int) -> String:
 func equip_weapon(tier: int, rarity: int = 0, bonus: int = -1) -> void:
 	if bonus < 0:
 		bonus = weapon_damage_bonus[tier - 1]
-	# A drop no better than the current weapon is just picked up and gone.
-	if is_dead or (weapon_tier > 0 and bonus <= weapon_bonus):
+	# A drop no better than the current weapon is salvaged into Skin Crystal.
+	if is_dead:
+		return
+	if weapon_tier > 0 and bonus <= weapon_bonus:
 		print("Passed on %s (wearing +%d)" % [weapon_text(tier, rarity, bonus), weapon_bonus])
+		salvage(rarity)
 		return
 	weapon_tier = tier
 	weapon_rarity = rarity
@@ -933,9 +949,12 @@ func equip_weapon(tier: int, rarity: int = 0, bonus: int = -1) -> void:
 func equip_armor(rarity: int = 0, value: int = -1) -> void:
 	if value < 0:
 		value = armor_damage_reduction
-	# A drop no better than the worn armor is just picked up and gone.
-	if is_dead or (has_armor and value <= armor_value):
+	# A drop no better than the worn armor is salvaged into Skin Crystal.
+	if is_dead:
+		return
+	if has_armor and value <= armor_value:
 		print("Passed on %s (wearing -%d)" % [armor_text(rarity, value), armor_value])
+		salvage(rarity)
 		return
 	has_armor = true
 	armor_rarity = rarity
@@ -951,8 +970,11 @@ func equip_armor(rarity: int = 0, value: int = -1) -> void:
 func equip_ring(rarity: int = 0, value: int = -1) -> void:
 	if value < 0:
 		value = ring_roll_damage
-	if is_dead or (has_ring and value <= ring_value):
+	if is_dead:
+		return
+	if has_ring and value <= ring_value:
 		print("Passed on %s (wearing %d)" % [ring_text(rarity, value), ring_value])
+		salvage(rarity)
 		return
 	has_ring = true
 	ring_rarity = rarity
@@ -962,6 +984,41 @@ func equip_ring(rarity: int = 0, value: int = -1) -> void:
 	ring_label.add_theme_color_override("font_color", rarity_colors[rarity])
 	_update_set_label()
 	_save_gear()
+
+
+# Breaks a passed-on drop of this rarity down into Skin Crystal.
+func salvage(rarity: int) -> void:
+	var amount := salvage_amounts[rarity]
+	materials += amount
+	print("Salvaged into %d %s (now %d)" % [amount, material_name, materials])
+	_update_material_label()
+	_save_gear()
+	_spawn_salvage_popup("+%d %s" % [amount, material_name], rarity_colors[rarity])
+
+
+func _update_material_label() -> void:
+	material_label.text = "%s: %d" % [material_name, materials]
+
+
+# A one-off Label in the world above the Player (like enemy damage numbers).
+func _spawn_salvage_popup(text: String, color: Color) -> void:
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.size = Vector2(200, 30)
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_constant_override("outline_size", 5)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	label.z_index = 20
+	label.position = global_position + Vector2(-100, -130)
+	get_parent().add_child(label)
+	var tween := label.create_tween()
+	tween.tween_property(label, "position:y", label.position.y - salvage_popup_rise, salvage_popup_time) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, salvage_popup_time * 0.4) \
+		.set_delay(salvage_popup_time * 0.6)
+	tween.tween_callback(label.queue_free)
 
 
 func equip_pet(kind: int) -> void:
@@ -1004,6 +1061,7 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "ring_rarity", ring_rarity)
 	cfg.set_value("gear", "ring_value", ring_value)
 	cfg.set_value("gear", "pet_kind", pet_kind)
+	cfg.set_value("materials", "skin_crystal", materials)
 	cfg.save(SAVE_PATH)
 
 
@@ -1011,6 +1069,10 @@ func _load_gear() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return
+	# Before the equips below: they save, so the count must be read first.
+	# Saves from before salvage load with 0.
+	materials = maxi(0, cfg.get_value("materials", "skin_crystal", 0))
+	_update_material_label()
 	var tier: int = clampi(cfg.get_value("gear", "weapon_tier", 0), 0, weapon_names.size())
 	var kind: int = clampi(cfg.get_value("gear", "pet_kind", 0), 0, pet_names.size())
 	if tier > 0:
@@ -1025,7 +1087,7 @@ func _load_gear() -> void:
 		equip_ring(clampi(cfg.get_value("gear", "ring_rarity", 0), 0, last), cfg.get_value("gear", "ring_value", ring_roll_damage))
 	if kind > 0:
 		equip_pet(kind)
-	print("Loaded save: weapon %d +%d, armor %s -%d, ring %s %d, pet %d" % [weapon_tier, weapon_bonus, has_armor, armor_value, has_ring, ring_value, pet_kind])
+	print("Loaded save: weapon %d +%d, armor %s -%d, ring %s %d, pet %d, %d %s" % [weapon_tier, weapon_bonus, has_armor, armor_value, has_ring, ring_value, pet_kind, materials, material_name])
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.

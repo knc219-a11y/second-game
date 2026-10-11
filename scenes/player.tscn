@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1"]
+[ext_resource type="Texture2D" path="res://art/stage1/drops/s1_drop_skin_crystal.png" id="2_crystal"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_feet"]
 size = Vector2(28, 14)
@@ -161,6 +162,24 @@ theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Q Dash Slash: ready   W Whirl Slash: ready"
+
+[node name="MaterialIcon" type="TextureRect" parent="Hud"]
+offset_left = 14.0
+offset_top = 208.0
+offset_right = 42.0
+offset_bottom = 236.0
+texture = ExtResource("2_crystal")
+expand_mode = 1
+
+[node name="MaterialLabel" type="Label" parent="Hud"]
+offset_left = 46.0
+offset_top = 208.0
+offset_right = 416.0
+offset_bottom = 236.0
+theme_override_constants/outline_size = 6
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "Skin Crystal: 0"
 
 [node name="HitSound" type="AudioStreamPlayer" parent="."]
 volume_db = -10.0
