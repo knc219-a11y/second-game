@@ -11,6 +11,10 @@ signal opened(chest: Area2D)
 # "ring" or "heal". The name above the chest shows what is inside.
 @export var kind: String = "heal"
 @export var tier: int = 1
+# A weapon chest rolls its rarity and bonus up front (player.gd roll_weapon) so
+# the label names exactly what comes out.
+var rarity: int = 0
+var bonus: int = 0
 # Gold chest for the S-grade special-effect item.
 @export var special: bool = false
 @export var special_color: Color = Color(1, 0.8, 0.2, 1)
@@ -22,6 +26,12 @@ var is_open: bool = false
 
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
+	var player := get_tree().get_first_node_in_group("player")
+	if kind == "weapon" and player != null:
+		var roll: Array = player.roll_weapon(tier)
+		rarity = roll[0]
+		bonus = roll[1]
+		$ItemLabel.modulate = player.rarity_colors[rarity]
 	$ItemLabel.text = item_name()
 	if special:
 		$Visual/Box.color = special_color
@@ -33,7 +43,7 @@ func item_name() -> String:
 	var player := get_tree().get_first_node_in_group("player")
 	match kind:
 		"weapon":
-			return player.weapon_names[tier - 1] if player else "Weapon"
+			return player.weapon_text(tier, rarity, bonus) if player else "Weapon"
 		"armor":
 			return player.armor_name if player else "Armor"
 		"ring":
@@ -56,6 +66,8 @@ func _on_area_entered(area: Area2D) -> void:
 	match kind:
 		"weapon":
 			loot.tier = tier
+			loot.rarity = rarity
+			loot.bonus = bonus
 			loot.get_node("Visual/Sword").color = target.weapon_arc_color[tier - 1]
 		"armor":
 			loot.is_armor = true

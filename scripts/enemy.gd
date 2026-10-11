@@ -44,9 +44,10 @@ extends CharacterBody2D
 # Hitbox area) is shown, so the Player can read the swing and step out.
 @export var telegraph_color: Color = Color(1, 0.8, 0.2, 1)
 # On death, chance (0..1) to drop the Player's weapon of drop_tier (see
-# player.gd weapon_names) where it fell. No drop once the Player has that tier
-# or better. The tough variant drops tier 2.
-@export var drop_chance: float = 0.35
+# player.gd weapon_names) where it fell. It keeps dropping once the Player has
+# one: each drop rolls a rarity and bonus (loot.gd), so a better one can still
+# come. The tough variant drops tier 2.
+@export var drop_chance: float = 0.25
 @export var drop_tier: int = 1
 # Separate, rarer roll for the Player's armor (any enemy, tough included).
 # No drop once the Player wears it.
@@ -717,7 +718,7 @@ func _spawn_death_burst(direction: int) -> void:
 
 
 func _try_drop_loot() -> void:
-	if not is_instance_valid(player) or player.weapon_tier >= drop_tier:
+	if not is_instance_valid(player):
 		return
 	if randf() >= drop_chance:
 		return

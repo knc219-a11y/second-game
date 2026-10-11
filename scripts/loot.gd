@@ -13,6 +13,10 @@ extends Area2D
 @export var is_heal: bool = false
 # Ring drop instead: shows the Ring shape.
 @export var is_ring: bool = false
+# Weapon rarity and bonus (player.gd roll_weapon). Left at -1, the drop rolls
+# them itself; a chest sets the ones its label already showed.
+@export var rarity: int = -1
+@export var bonus: int = -1
 # Painted Stage 1 drop art (32px, drawn at 1:1) in place of the placeholder
 # shapes: the armor as a hardened husk shard and the Scab Pup (pet kind 2) as a
 # stabilized regen core in every stage, since they belong to the item; the
@@ -34,6 +38,19 @@ var picked: bool = false
 func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	var is_weapon := not is_armor and not is_pet and not is_heal and not is_ring
+	$NameLabel.visible = false
+	var player := get_tree().get_first_node_in_group("player")
+	if is_weapon and player != null:
+		if rarity < 0:
+			var roll: Array = player.roll_weapon(tier)
+			rarity = roll[0]
+			bonus = roll[1]
+		# Rarity reads at a glance: the glow and the name above take its color.
+		var color: Color = player.rarity_colors[rarity]
+		$Visual/Glow.color = Color(color, 0.5)
+		$NameLabel.text = player.weapon_text(tier, rarity, bonus)
+		$NameLabel.modulate = color
+		$NameLabel.visible = true
 	$Visual/Sword.visible = is_weapon
 	$Visual/Hilt.visible = is_weapon
 	$Visual/Armor.visible = is_armor
@@ -92,7 +109,7 @@ func _on_area_entered(area: Area2D) -> void:
 	elif is_ring:
 		target.equip_ring()
 	else:
-		target.equip_weapon(tier)
+		target.equip_weapon(tier, maxi(rarity, 0), bonus)
 	picked = true
 	target.play_pickup_sound(1.25 if is_heal else 1.0)
 	queue_free()

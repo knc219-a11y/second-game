@@ -65,3 +65,15 @@ polygon = PackedVector2Array(-3, -15, 0, -20, 3, -15, 0, -12)
 visible = false
 position = Vector2(0, -10)
 scale = Vector2(0.625, 0.625)
+
+[node name="NameLabel" type="Label" parent="."]
+visible = false
+offset_left = -80.0
+offset_top = -58.0
+offset_right = 80.0
+offset_bottom = -38.0
+horizontal_alignment = 1
+theme_override_constants/outline_size = 5
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 13
+text = "Common Callus Blade +2"

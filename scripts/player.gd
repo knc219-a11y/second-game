@@ -52,6 +52,17 @@ extends CharacterBody2D
 @export var weapon_names: Array[String] = ["Callus Blade", "Bone Blade"]
 @export var weapon_damage_bonus: Array[int] = [2, 4]
 @export var weapon_arc_color: Array[Color] = [Color(0.55, 0.95, 1, 1), Color(0.8, 0.5, 1, 1)]
+# Weapon rarity (Dungeon Quest style): every weapon drop rolls a rarity, and the
+# bonus rolls in that rarity's small range around the tier's weapon_damage_bonus
+# (base + rarity_bonus_min..max, at least 1): Callus Blade Common +1~2, Magic
+# +2~3, Rare +3~4, Legendary +4; Bone Blade +3~4 / +4~5 / +5~6 / +6. A drop is
+# worn only if its bonus beats the current one, so a good Callus Blade can beat
+# a poor Bone Blade. Rarity shows as the drop's glow, name and the HUD color.
+const RARITY_NAMES: Array[String] = ["Common", "Magic", "Rare", "Legendary"]
+@export var rarity_colors: Array[Color] = [Color(0.92, 0.92, 0.92, 1), Color(0.4, 0.65, 1, 1), Color(1, 0.88, 0.25, 1), Color(1, 0.55, 0.15, 1)]
+@export var rarity_weights: Array[int] = [55, 30, 12, 3]
+@export var rarity_bonus_min: Array[int] = [-1, 0, 1, 2]
+@export var rarity_bonus_max: Array[int] = [0, 1, 2, 2]
 # Second slot: armor any enemy can rarely drop (see enemy.armor_drop_chance).
 # Once worn, every enemy hit deals armor_damage_reduction less (10 -> 8), about
 # as small a step as one weapon tier. One armor only for now, kept across R (SAVE_PATH).
@@ -229,6 +240,9 @@ var hurt_knockback_left: float = 0.0
 var passing_enemies: bool = false
 # 0 = unarmed, otherwise the index+1 of the equipped weapon above.
 var weapon_tier: int = 0
+# Rarity (RARITY_NAMES index) and rolled damage bonus of the equipped weapon.
+var weapon_rarity: int = 0
+var weapon_bonus: int = 0
 var has_armor: bool = false
 var has_ring: bool = false
 # Enemies already grazed by the current roll (Nerve Ring).
@@ -768,8 +782,7 @@ func _apply_hits() -> void:
 
 
 func _hit_damage() -> int:
-	var bonus := weapon_damage_bonus[weapon_tier - 1] if weapon_tier > 0 else 0
-	return combo_damage[combo_index] + bonus
+	return combo_damage[combo_index] + weapon_bonus
 
 
 func has_set() -> bool:
@@ -822,14 +835,40 @@ func _update_set_label() -> void:
 		set_label.text = "Set: none (weapon + armor)"
 
 
-func equip_weapon(tier: int) -> void:
+# Rolls a weapon drop of this tier: [rarity, bonus] (see rarity_weights).
+func roll_weapon(tier: int) -> Array:
+	var total := 0
+	for w in rarity_weights:
+		total += w
+	var pick := randi() % total
+	var rarity := 0
+	while pick >= rarity_weights[rarity]:
+		pick -= rarity_weights[rarity]
+		rarity += 1
+	var base := weapon_damage_bonus[tier - 1]
+	var bonus := maxi(1, base + randi_range(rarity_bonus_min[rarity], rarity_bonus_max[rarity]))
+	return [rarity, bonus]
+
+
+func weapon_text(tier: int, rarity: int, bonus: int) -> String:
+	return "%s %s +%d" % [RARITY_NAMES[rarity], weapon_names[tier - 1], bonus]
+
+
+# bonus < 0 means the tier's plain bonus (a Common of weapon_damage_bonus).
+func equip_weapon(tier: int, rarity: int = 0, bonus: int = -1) -> void:
+	if bonus < 0:
+		bonus = weapon_damage_bonus[tier - 1]
 	# A drop no better than the current weapon is just picked up and gone.
-	if tier <= weapon_tier or is_dead:
+	if is_dead or (weapon_tier > 0 and bonus <= weapon_bonus):
+		print("Passed on %s (wearing +%d)" % [weapon_text(tier, rarity, bonus), weapon_bonus])
 		return
 	weapon_tier = tier
+	weapon_rarity = rarity
+	weapon_bonus = bonus
 	var i := tier - 1
-	print("Picked up %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]])
-	weapon_label.text = "Weapon: %s (+%d damage)" % [weapon_names[i], weapon_damage_bonus[i]]
+	print("Picked up %s" % weapon_text(tier, rarity, bonus))
+	weapon_label.text = "Weapon: %s damage" % weapon_text(tier, rarity, bonus)
+	weapon_label.add_theme_color_override("font_color", rarity_colors[rarity])
 	attack_arc.color = weapon_arc_color[i]
 	_update_set_label()
 	_save_gear()
@@ -886,6 +925,8 @@ func _save_gear() -> void:
 	# Load first so sections other than "gear" (later progress) are kept.
 	cfg.load(SAVE_PATH)
 	cfg.set_value("gear", "weapon_tier", weapon_tier)
+	cfg.set_value("gear", "weapon_rarity", weapon_rarity)
+	cfg.set_value("gear", "weapon_bonus", weapon_bonus)
 	cfg.set_value("gear", "armor", has_armor)
 	cfg.set_value("gear", "ring", has_ring)
 	cfg.set_value("gear", "pet_kind", pet_kind)
@@ -899,14 +940,16 @@ func _load_gear() -> void:
 	var tier: int = clampi(cfg.get_value("gear", "weapon_tier", 0), 0, weapon_names.size())
 	var kind: int = clampi(cfg.get_value("gear", "pet_kind", 0), 0, pet_names.size())
 	if tier > 0:
-		equip_weapon(tier)
+		# Saves from before rarity load as a Common with the tier's plain bonus.
+		var rarity: int = clampi(cfg.get_value("gear", "weapon_rarity", 0), 0, RARITY_NAMES.size() - 1)
+		equip_weapon(tier, rarity, cfg.get_value("gear", "weapon_bonus", weapon_damage_bonus[tier - 1]))
 	if cfg.get_value("gear", "armor", false):
 		equip_armor()
 	if cfg.get_value("gear", "ring", false):
 		equip_ring()
 	if kind > 0:
 		equip_pet(kind)
-	print("Loaded save: weapon %d, armor %s, ring %s, pet %d" % [weapon_tier, has_armor, has_ring, pet_kind])
+	print("Loaded save: weapon %d +%d, armor %s, ring %s, pet %d" % [weapon_tier, weapon_bonus, has_armor, has_ring, pet_kind])
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.
