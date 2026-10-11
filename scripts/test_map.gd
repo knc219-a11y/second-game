@@ -911,6 +911,11 @@ func _update_kill_label() -> void:
 		kill_label.text = "%s %s   Enemies left: %d" % [_stage_name(), _stage_number(), _alive_enemies()]
 
 
+# Clearing a Stage 1 area before the last one gives back this much HP (capped
+# at max_hp), a breather on the way to the boss; the gain shows on the banner.
+@export var area_clear_heal: int = 20
+
+
 func _clear_stage() -> void:
 	stage_cleared = true
 	var exit_label := exit_gate.get_node("Label") as Label
@@ -919,7 +924,11 @@ func _clear_stage() -> void:
 	if area < _area_count():
 		var next: String = STAGE1_AREA_NAMES[area]
 		print("Area %s clear" % _stage_number())
-		_show_banner("%s Clear!" % _stage_number(), Color(1, 1, 1, 1), clear_banner_time)
+		var banner := "%s Clear!" % _stage_number()
+		var before: int = player.hp
+		if player.heal(area_clear_heal):
+			banner += "   +%d HP" % (player.hp - before)
+		_show_banner(banner, Color(1, 1, 1, 1), clear_banner_time)
 		kill_label.text = "%s %s   Clear! On to %s on the right ->" % [_stage_name(), _stage_number(), next]
 		exit_label.text = next
 		return
