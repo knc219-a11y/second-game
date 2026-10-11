@@ -436,6 +436,7 @@ func _enter_hub() -> void:
 			label.text = "%s\nNew" % STAGE_NAMES[i]
 		else:
 			label.text = "%s\nBest %s" % [STAGE_NAMES[i], best]
+			label.text += "\nDrop luck +%d" % _replay_luck(i + 1)
 			label.modulate = GRADE_COLORS[best]
 	print("Town: unlocked %d" % unlocked)
 	_show_banner(TOWN_NAME)
@@ -447,7 +448,7 @@ func _spawn_stage() -> void:
 	# The grade counts hits over the whole stage, every area of it.
 	if area == 1:
 		player.hits_taken = 0
-		player.drop_luck = _replay_luck()
+		player.drop_luck = _replay_luck(stage)
 	var rocks: Array = STAGE1_AREA_ROCKS[area - 1] if stage == 1 else STAGE_ROCKS[(stage - 1) % STAGE_ROCKS.size()]
 	_build_rocks(rocks, STAGE_ROCK_COLORS[(stage - 1) % STAGE_ROCK_COLORS.size()])
 	if stage == 1:
@@ -497,14 +498,15 @@ func _spawn_stage() -> void:
 
 # Repeat-farming reward: replaying a stage already cleared gives drop luck +1
 # (player.gd luck_weight_shift), +2 once its best grade is S; an S clear adds
-# one more for that clear's chests. Shown on the stage and clear banners.
+# one more for that clear's chests. Shown on the stage and clear banners, the
+# town gate labels (what entering gives) and the stage HUD line.
 const LUCK_COLOR := Color(0.6, 1, 0.75, 1)
 
 
-func _replay_luck() -> int:
+func _replay_luck(for_stage: int) -> int:
 	var cfg := ConfigFile.new()
 	cfg.load(player.SAVE_PATH)
-	var best: String = cfg.get_value("grades", "stage_%d" % ((stage - 1) % STAGES.size() + 1), "")
+	var best: String = cfg.get_value("grades", "stage_%d" % ((for_stage - 1) % STAGES.size() + 1), "")
 	if best == "":
 		return 0
 	return 2 if best == "S" else 1
@@ -513,6 +515,11 @@ func _replay_luck() -> int:
 func _luck_text() -> String:
 	var w: Array[int] = player.luck_weights()
 	return "Drop luck +%d  (Rare %d%%  Legendary %d%%)" % [player.drop_luck, w[2], w[3]]
+
+
+# Short HUD tail for the stage line, empty without luck.
+func _luck_hud() -> String:
+	return "   Drop luck +%d" % player.drop_luck if player.drop_luck > 0 else ""
 
 
 # Tiled floor on, grid off (or the other way round). Fills the layer once.
@@ -992,7 +999,7 @@ func _update_kill_label() -> void:
 	elif endless_mode:
 		kill_label.text = DUNGEON_NAME + "   Kills: %d   Enemies at once: %d" % [kills, keep_alive]
 	else:
-		kill_label.text = "%s %s   Enemies left: %d" % [_stage_name(), _stage_number(), _alive_enemies()]
+		kill_label.text = "%s %s   Enemies left: %d" % [_stage_name(), _stage_number(), _alive_enemies()] + _luck_hud()
 
 
 # Clearing a Stage 1 area before the last one gives back this much HP (capped
@@ -1030,7 +1037,7 @@ func _clear_stage() -> void:
 	if player.drop_luck > 0:
 		text += "\nChests: " + _luck_text()
 	_show_banner(text, GRADE_COLORS[grade], clear_banner_time)
-	kill_label.text = "%s   Clear! Back to %s on the right ->" % [_stage_name(), TOWN_NAME]
+	kill_label.text = "%s   Clear! Back to %s on the right ->" % [_stage_name(), TOWN_NAME] + _luck_hud()
 	_spawn_chests(grade)
 
 
