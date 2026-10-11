@@ -369,6 +369,7 @@ func _enter_hub() -> void:
 
 func _spawn_stage() -> void:
 	stage_cleared = false
+	brood_called = 0
 	# The grade counts hits over the whole stage, every area of it.
 	if area == 1:
 		player.hits_taken = 0
@@ -1225,6 +1226,35 @@ func _update_boss_bar() -> void:
 	boss_bar.visible = show
 	if show:
 		boss_fill.size.x = (BOSS_BAR_RECT.size.x - 4) * float(boss.hp) / boss.max_hp
+		while brood_called < boss_brood_at.size() and boss.hp <= boss.max_hp * boss_brood_at[brood_called]:
+			brood_called += 1
+			_call_brood(boss)
+
+
+# Brood: each time the boss drops below one of boss_brood_at (fractions of its
+# HP) it calls boss_brood_count Husk Crawlers out of the field edges, from the
+# BROOD_SPOTS nearest to it (all clear of the Stage 1 rocks and props). They
+# come straight for the Player; the stage clears once they are dead too.
+@export var boss_brood_at: PackedFloat32Array = PackedFloat32Array([0.66, 0.33])
+@export var boss_brood_count: int = 2
+@export var brood_color: Color = Color(1, 0.75, 0.55, 1)
+const BROOD_SPOTS := [Vector2(800, 120), Vector2(800, 820), Vector2(1500, 150), Vector2(1500, 780), Vector2(200, 150), Vector2(200, 800)]
+var brood_called: int = 0
+
+
+func _call_brood(boss: Node2D) -> void:
+	var spots := BROOD_SPOTS.duplicate()
+	spots.sort_custom(func(a, b): return a.distance_to(boss.position) < b.distance_to(boss.position))
+	for i in mini(boss_brood_count, spots.size()):
+		var enemy := enemy_scene.instantiate()
+		enemy.position = spots[i]
+		enemy.sprite_sheet = HUSK_CRAWLER_TEX
+		enemy.detect_range = INF
+		enemy.lose_range = INF
+		enemies.add_child(enemy)
+	print("%s calls %d brood" % [boss_name, boss_brood_count])
+	_show_banner("%s calls her brood!" % boss_name, brood_color)
+	_update_kill_label()
 
 
 func _make_leader(enemy: Node) -> void:
