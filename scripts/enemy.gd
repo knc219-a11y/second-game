@@ -56,7 +56,7 @@ extends CharacterBody2D
 @export var ring_drop_chance: float = 0.07
 # Separate, rare roll for a pet of kind pet_drop_kind (player.gd pet_names):
 # normal enemies drop the Scab Pup (2); test_map.gd gives the tough variant the
-# Marrow Cub (1) and its own chance. No drop while the Player has that same pet.
+# Marrow Cub (1) and its own chance. No drop once the Player keeps that pet.
 @export var pet_drop_chance: float = 0.04
 @export var pet_drop_kind: int = 2
 # Separate roll for an ichor drop (player.gd heal_amount), only while the Player
@@ -765,7 +765,7 @@ func _try_drop_ring() -> void:
 
 
 func _try_drop_pet() -> void:
-	if not is_instance_valid(player) or player.pet_kind == pet_drop_kind:
+	if not is_instance_valid(player) or pet_drop_kind in player.owned_pets:
 		return
 	if randf() >= pet_drop_chance:
 		return
