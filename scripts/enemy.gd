@@ -141,6 +141,8 @@ var knockback_time_left: float = 0.0
 var knockback_push: float = 0.0
 var flash_time_left: float = 0.0
 var is_chasing: bool = false
+# Same-pack enemies (set by test_map): spotting the Player wakes them too.
+var pack_mates: Array[Node] = []
 # Which side of the Player to stand on: 1 = right, -1 = left.
 var side: int = 1
 # True while walking round the Player to the free far side (see _chase).
@@ -267,6 +269,15 @@ func _update_sprite(delta: float) -> void:
 	sprite.position.x = lean * facing
 
 
+# A mate still close to the Player keeps the rest of the pack coming, so a
+# pack woken from its far edge doesn't give up straight away.
+func _pack_near_player() -> bool:
+	for mate in pack_mates:
+		if is_instance_valid(mate) and mate.is_chasing and mate.global_position.distance_to(player.global_position) <= lose_range:
+			return true
+	return false
+
+
 func _chase(delta: float) -> void:
 	velocity = Vector2.ZERO
 	if not is_instance_valid(player) or _player_is_dead():
@@ -277,7 +288,10 @@ func _chase(delta: float) -> void:
 	var dist := to_player.length()
 	if not is_chasing and dist <= detect_range:
 		is_chasing = true
-	elif is_chasing and dist > lose_range:
+		for mate in pack_mates:
+			if is_instance_valid(mate):
+				mate.is_chasing = true
+	elif is_chasing and dist > lose_range and not _pack_near_player():
 		is_chasing = false
 
 	if not is_chasing or delta <= 0.0:

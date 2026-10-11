@@ -18,9 +18,13 @@ extends Node2D
 @export var endless_mode: bool = false
 # Kinds: "normal", "tough", "ranged" (variants made by _make_tough/_make_ranged).
 # Positions sit inside the walls and clear of rocks; enemies wait there until
-# the Player comes within their detect_range.
+# the Player comes within their detect_range. An optional third value is a
+# pack number: when one of a pack spots the Player, the whole pack comes.
+# Stage 1 packs: 2 past the start, 3 north of the bone arch, 3 guarding the camp.
 const STAGES := [
-	[["normal", Vector2(420, 450)], ["normal", Vector2(290, 760)], ["normal", Vector2(750, 450)]],
+	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
+	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
+	["normal", Vector2(1250, 700), 2], ["normal", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
 	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["tough", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
 	[["tough", Vector2(800, 450)], ["normal", Vector2(600, 760)], ["ranged", Vector2(1200, 130)], ["ranged", Vector2(1420, 640)], ["normal", Vector2(1150, 800)]],
 ]
@@ -354,8 +358,13 @@ func _spawn_stage() -> void:
 		_build_watchtower()
 	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
 	_show_ground(stage == 1)
+	var packs := {}
 	for entry in STAGES[(stage - 1) % STAGES.size()]:
 		var enemy := enemy_scene.instantiate()
+		if entry.size() > 2:
+			if not packs.has(entry[2]):
+				packs[entry[2]] = []
+			packs[entry[2]].append(enemy)
 		enemy.position = entry[1]
 		if entry[0] == "tough":
 			_make_tough(enemy)
@@ -365,6 +374,9 @@ func _spawn_stage() -> void:
 			# Stage 1 normal (Husk Crawler) wears its painted sprite.
 			enemy.sprite_sheet = HUSK_CRAWLER_TEX
 		enemies.add_child(enemy)
+	for pack in packs.values():
+		for enemy in pack:
+			enemy.pack_mates.assign(pack.filter(func(e): return e != enemy))
 	print("Stage %d: %d enemies" % [stage, enemies.get_child_count()])
 	_show_banner("Stage %d  %s" % [stage, _stage_name()])
 
