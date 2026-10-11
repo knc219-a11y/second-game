@@ -20,11 +20,12 @@ extends Node2D
 # Positions sit inside the walls and clear of rocks; enemies wait there until
 # the Player comes within their detect_range. An optional third value is a
 # pack number: when one of a pack spots the Player, the whole pack comes.
-# Stage 1 packs: 2 past the start, 3 north of the bone arch, 3 guarding the camp.
+# Stage 1 packs: 2 past the start, 3 north of the bone arch, and the camp: 2
+# with their leader (a bigger Husk Crawler that leaps, see _make_leader).
 const STAGES := [
 	[["normal", Vector2(560, 470), 0], ["normal", Vector2(610, 570), 0],
 	["normal", Vector2(780, 170), 1], ["normal", Vector2(900, 140), 1], ["normal", Vector2(860, 230), 1],
-	["normal", Vector2(1250, 700), 2], ["normal", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
+	["normal", Vector2(1250, 700), 2], ["leader", Vector2(1380, 720), 2], ["normal", Vector2(1450, 600), 2]],
 	[["normal", Vector2(650, 180)], ["normal", Vector2(800, 720)], ["tough", Vector2(1150, 450)], ["normal", Vector2(1300, 750)]],
 	[["tough", Vector2(800, 450)], ["normal", Vector2(600, 760)], ["ranged", Vector2(1200, 130)], ["ranged", Vector2(1420, 640)], ["normal", Vector2(1150, 800)]],
 ]
@@ -370,6 +371,8 @@ func _spawn_stage() -> void:
 			_make_tough(enemy)
 		elif entry[0] == "ranged":
 			_make_ranged(enemy)
+		elif entry[0] == "leader":
+			_make_leader(enemy)
 		elif stage == 1:
 			# Stage 1 normal (Husk Crawler) wears its painted sprite.
 			enemy.sprite_sheet = HUSK_CRAWLER_TEX
@@ -1057,6 +1060,25 @@ func _spawn_enemy() -> void:
 	elif roll < tough_chance + ranged_chance:
 		_make_ranged(enemy)
 	enemies.add_child(enemy)
+
+
+# Stage 1 camp leader: a bigger, tougher Husk Crawler that also leaps at the
+# Player from mid range (enemy.gd leap_*). Same skin lineage drops.
+@export var leader_hp: int = 70
+@export var leader_damage: int = 12
+@export var leader_leap_distance: float = 130.0
+@export var leader_sprite_scale: float = 1.35
+@export var leader_drop_chance: float = 0.6
+
+
+func _make_leader(enemy: Node) -> void:
+	enemy.name = "Leader"
+	enemy.max_hp = leader_hp
+	enemy.attack_damage = leader_damage
+	enemy.leap_distance = leader_leap_distance
+	enemy.drop_chance = leader_drop_chance
+	enemy.sprite_sheet = HUSK_CRAWLER_TEX
+	enemy.sprite_scale = leader_sprite_scale
 
 
 # Called before add_child, so enemy._ready picks up the new HP and color.

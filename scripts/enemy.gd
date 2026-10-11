@@ -76,6 +76,20 @@ extends CharacterBody2D
 # read and dodge) and hits for less.
 @export var counter_startup: float = 0.45
 @export var counter_damage: int = 5
+# Leap (Stage 1 camp leader only; off while leap_distance is 0): standing on the
+# Player's line leap_min..leap_range px away with the leap ready, it winds up
+# leap_startup s with the danger zone stretched over the whole jump, then jumps
+# leap_distance px forward in leap_time s, hitting with its normal swing box
+# (attack_damage) and stopping at walls or the Player's body. Neither the
+# wind-up nor the jump can be interrupted: step off the line or roll through.
+@export var leap_distance: float = 0.0
+@export var leap_min: float = 100.0
+@export var leap_range: float = 190.0
+@export var leap_startup: float = 0.6
+@export var leap_time: float = 0.2
+@export var leap_cooldown: float = 3.0
+# Painted size multiplier (the leader is bigger; boxes unchanged).
+@export var sprite_scale: float = 1.0
 # Floating damage number above the enemy on each hit: rises damage_number_rise px
 # and fades over damage_number_time s. Style (take_damage number_style):
 # 0 = normal hit, 1 = big hit (combo finisher, Q Dash Slash, set shockwave),
@@ -156,6 +170,9 @@ var attack_landed: bool = false
 # Set by a knockback; the next swing is a counter (see counter_color).
 var counter_ready: bool = false
 var is_counter: bool = false
+var is_leaping: bool = false
+var leap_cooldown_left: float = 0.0
+var warn_polygon: PackedVector2Array
 # Ranged variant: 1 = down, -1 = up while sidestepping round something, else 0.
 var sidestep_dir: int = 0
 # Same size as the shot's collision box (projectile.tscn), for the lane check.
@@ -192,6 +209,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if cooldown_left > 0.0:
 		cooldown_left -= delta
+	if leap_cooldown_left > 0.0:
+		leap_cooldown_left -= delta
 
 	# Priority: knockback > attack > chase.
 	if knockback_time_left > 0.0:
@@ -220,6 +239,8 @@ func _setup_sprite() -> void:
 	sprite.hframes = int(sprite_sheet.get_width() / sprite_frame_size.x)
 	sprite.centered = false
 	sprite.offset = -sprite_origin
+	sprite.scale = Vector2(sprite_scale, sprite_scale)
+	hp_label.position.y -= sprite_frame_size.y * (sprite_scale - 1.0)
 	var mat := ShaderMaterial.new()
 	mat.shader = TINT_SHADER
 	sprite.material = mat
@@ -305,6 +326,14 @@ func _chase(delta: float) -> void:
 	var near_side := side
 	if dx != 0.0:
 		near_side = 1 if dx > 0.0 else -1
+	# Leader leap: on the line at mid range with no packmate in between, it
+	# jumps in from wherever it is (even while going round).
+	if leap_distance > 0.0 and leap_cooldown_left <= 0.0 and absf(to_player.y) <= vertical_tolerance \
+			and absf(dx) >= leap_min and absf(dx) <= leap_range and _count_ahead(near_side, absf(dx)) == 0:
+		side = near_side
+		is_crossing = false
+		_start_leap()
+		return
 	# Crossing is over once level with the far spot (it then steps onto the line).
 	if is_crossing and dx * side >= stop_distance - 1.0:
 		is_crossing = false
@@ -434,17 +463,36 @@ func _start_attack() -> void:
 		player.play_warn_sound(3 if is_ranged else kind)
 
 
+func _start_leap() -> void:
+	_start_attack()
+	is_leaping = true
+	is_counter = false
+	leap_cooldown_left = leap_cooldown
+	warn_polygon = warn_zone.polygon
+	var reach := warn_polygon[1].x + leap_distance
+	warn_zone.polygon = PackedVector2Array([warn_polygon[0], Vector2(reach, warn_polygon[1].y), Vector2(reach, warn_polygon[2].y), warn_polygon[3]])
+	_paint(_body_color())
+	if player.has_method("play_warn_sound"):
+		player.play_warn_sound(2)
+
+
 func _update_attack(delta: float) -> void:
 	attack_time += delta
 	var startup := counter_startup if is_counter else attack_startup
+	var active := attack_active
 	if is_ranged:
 		startup = shot_startup
+	if is_leaping:
+		startup = leap_startup
+		active = leap_time
 	if attack_time < startup:
 		_set_attack_phase(AttackPhase.STARTUP)
-	elif attack_time < startup + attack_active:
+	elif attack_time < startup + active:
 		_set_attack_phase(AttackPhase.ACTIVE)
+		if is_leaping:
+			move_and_collide(Vector2(attack_pivot.scale.x * leap_distance / leap_time * delta, 0.0))
 		_apply_hit()
-	elif attack_time < startup + attack_active + attack_recovery:
+	elif attack_time < startup + active + attack_recovery:
 		_set_attack_phase(AttackPhase.RECOVERY)
 	else:
 		_end_attack()
@@ -452,6 +500,9 @@ func _update_attack(delta: float) -> void:
 
 func _end_attack() -> void:
 	is_counter = false
+	if is_leaping:
+		is_leaping = false
+		warn_zone.polygon = warn_polygon
 	attack_pivot.visible = false
 	_set_attack_phase(AttackPhase.NONE)
 
@@ -532,7 +583,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 	_paint(flash_color)
 	flash_time_left = flash_duration
 
-	if (super_armor or is_counter) and attack_phase != AttackPhase.NONE:
+	if (super_armor or is_counter or is_leaping) and attack_phase != AttackPhase.NONE:
 		return
 	if direction != 0 and knockback_duration > 0.0:
 		# Knockback interrupts the attack; the cooldown keeps running.
