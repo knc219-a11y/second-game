@@ -90,6 +90,9 @@ extends CharacterBody2D
 @export var leap_cooldown: float = 3.0
 # Painted size multiplier (the leader is bigger; boxes unchanged).
 @export var sprite_scale: float = 1.0
+# Hurtbox and swing (hitbox, warning, arc) size multiplier, for the Stage 1
+# boss. Its feet box stays as is.
+@export var size_scale: float = 1.0
 # Floating damage number above the enemy on each hit: rises damage_number_rise px
 # and fades over damage_number_time s. Style (take_damage number_style):
 # 0 = normal hit, 1 = big hit (combo finisher, Q Dash Slash, set shockwave),
@@ -201,6 +204,7 @@ func _ready() -> void:
 	lane_shape.size = Vector2(14, 12)
 	hp_label.text = str(hp)
 	add_to_group("enemies")
+	$Hurtbox.scale = Vector2(size_scale, size_scale)
 	player = get_tree().get_first_node_in_group("player") as Node2D
 	if sprite_sheet:
 		_setup_sprite()
@@ -454,7 +458,8 @@ func _start_attack() -> void:
 	counter_ready = false
 	cooldown_left = shot_cooldown if is_ranged else attack_cooldown
 	# Left/right only: swing toward the side the Player is on.
-	attack_pivot.scale.x = 1 if player.global_position.x >= global_position.x else -1
+	var dir := 1 if player.global_position.x >= global_position.x else -1
+	attack_pivot.scale = Vector2(dir * size_scale, size_scale)
 	attack_pivot.visible = true
 	_set_attack_phase(AttackPhase.STARTUP)
 	# Audible cue with the telegraph (see player.play_warn_sound).
@@ -469,7 +474,7 @@ func _start_leap() -> void:
 	is_counter = false
 	leap_cooldown_left = leap_cooldown
 	warn_polygon = warn_zone.polygon
-	var reach := warn_polygon[1].x + leap_distance
+	var reach := warn_polygon[1].x + leap_distance / size_scale
 	warn_zone.polygon = PackedVector2Array([warn_polygon[0], Vector2(reach, warn_polygon[1].y), Vector2(reach, warn_polygon[2].y), warn_polygon[3]])
 	_paint(_body_color())
 	if player.has_method("play_warn_sound"):
@@ -490,7 +495,7 @@ func _update_attack(delta: float) -> void:
 	elif attack_time < startup + active:
 		_set_attack_phase(AttackPhase.ACTIVE)
 		if is_leaping:
-			move_and_collide(Vector2(attack_pivot.scale.x * leap_distance / leap_time * delta, 0.0))
+			move_and_collide(Vector2(signf(attack_pivot.scale.x) * leap_distance / leap_time * delta, 0.0))
 		_apply_hit()
 	elif attack_time < startup + active + attack_recovery:
 		_set_attack_phase(AttackPhase.RECOVERY)
