@@ -61,6 +61,13 @@ extends CharacterBody2D
 const RARITY_NAMES: Array[String] = ["Common", "Magic", "Rare", "Legendary"]
 @export var rarity_colors: Array[Color] = [Color(0.92, 0.92, 0.92, 1), Color(0.4, 0.65, 1, 1), Color(1, 0.88, 0.25, 1), Color(1, 0.55, 0.15, 1)]
 @export var rarity_weights: Array[int] = [55, 30, 12, 3]
+# Repeat-farming luck (set by test_map.gd for each stage run): every level moves
+# luck_weight_shift from Common to the higher rarities, so drops, chests and
+# caches all roll a bit better. Weights 55/30/12/3 at 0, 47/34/15/4 at 1,
+# 39/38/18/5 at 2, 31/42/21/6 at 3 (max_drop_luck).
+@export var luck_weight_shift: Array[int] = [-8, 4, 3, 1]
+@export var max_drop_luck: int = 3
+var drop_luck: int = 0
 @export var rarity_bonus_min: Array[int] = [-1, 0, 1, 2]
 @export var rarity_bonus_max: Array[int] = [0, 1, 2, 2]
 # Second slot: armor any enemy can rarely drop (see enemy.armor_drop_chance).
@@ -868,15 +875,25 @@ func _update_set_label() -> void:
 		set_label.text = "Set: none (weapon + armor)"
 
 
-# Picks a rarity by rarity_weights (shared by weapon, armor and ring drops).
+# rarity_weights shifted by the current drop_luck (see luck_weight_shift).
+func luck_weights() -> Array[int]:
+	var level := clampi(drop_luck, 0, max_drop_luck)
+	var weights: Array[int] = []
+	for i in rarity_weights.size():
+		weights.append(maxi(0, rarity_weights[i] + level * luck_weight_shift[i]))
+	return weights
+
+
+# Picks a rarity by luck_weights (shared by weapon, armor and ring drops).
 func roll_rarity() -> int:
+	var weights := luck_weights()
 	var total := 0
-	for w in rarity_weights:
+	for w in weights:
 		total += w
 	var pick := randi() % total
 	var rarity := 0
-	while pick >= rarity_weights[rarity]:
-		pick -= rarity_weights[rarity]
+	while pick >= weights[rarity]:
+		pick -= weights[rarity]
 		rarity += 1
 	return rarity
 
