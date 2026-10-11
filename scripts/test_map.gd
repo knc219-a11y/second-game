@@ -246,8 +246,8 @@ const GRADE_COLORS := {"S": Color(1, 0.85, 0.2, 1), "A": Color(0.5, 0.85, 1, 1),
 # Reward chests by grade, placed in front of the exit: B = 1 chest, A = 2
 # chests and opening one makes the other vanish, S = the same pick where one
 # chest has s_special_chance to be a gold chest holding the special-effect item
-# (the Nerve Ring, while not yet worn). Contents are the normal drops: a weapon
-# (_weapon_offer), the armor while not worn, or else an ichor drop.
+# (a Nerve Ring roll). Contents are the normal drops, each rolling its own
+# rarity: a weapon (_weapon_offer) and the armor.
 @export var chest_scene: PackedScene = preload("res://scenes/chest.tscn")
 @export var chest_offset_x: float = -110.0
 @export var chest_gap_y: float = 160.0
@@ -952,17 +952,15 @@ func _clear_stage() -> void:
 
 
 func _spawn_chests(grade: String) -> void:
-	# Upgrades the Player doesn't have yet; an ichor drop when there are none left.
-	# A weapon is always one of them (_weapon_offer): it rolls its own rarity.
-	var pool: Array = [_weapon_offer()]
-	if not player.has_armor:
-		pool.append(["armor", 1])
+	# A weapon (_weapon_offer) and the armor; each rolls its own rarity, so even
+	# worn gear can come back better. An ichor drop if the pool runs short.
+	var pool: Array = [_weapon_offer(), ["armor", 1]]
 	pool.shuffle()
 	var count := 1 if grade == "B" else 2
 	var contents: Array = []
 	for i in count:
 		contents.append(pool[i] if i < pool.size() else ["heal", 1])
-	var special: bool = grade == "S" and not player.has_ring and randf() < s_special_chance
+	var special: bool = grade == "S" and randf() < s_special_chance
 	if special:
 		contents[count - 1] = ["ring", 1]
 	for i in count:
@@ -986,7 +984,7 @@ func _weapon_offer() -> Array:
 
 # Stage 1 hidden cache: one chest tucked behind the watchtower (the tower fades
 # when the Player walks behind it), there from the start of every visit. It
-# holds one upgrade (a weapon roll, or the armor or ring while not worn). Chests sit below the World, so the tower hides it.
+# holds one upgrade (a weapon, armor or ring roll). Chests sit below the World, so the tower hides it.
 @export var hidden_cache_position: Vector2 = Vector2(1070, 790)
 # 1-2 and 1-3 hide one more each, behind the north side of that area's rock
 # pillar (see STAGE1_AREA_ROCKS): [position, holds an upgrade]. 1-2's is only a
@@ -997,11 +995,7 @@ const AREA_CACHES := {2: [Vector2(1100, 100), false], 3: [Vector2(1010, 360), tr
 func _spawn_hidden_cache(at: Vector2 = hidden_cache_position, upgrade: bool = true) -> void:
 	var pool: Array = []
 	if upgrade:
-		pool.append(_weapon_offer())
-		if not player.has_armor:
-			pool.append(["armor", 1])
-		if not player.has_ring:
-			pool.append(["ring", 1])
+		pool = [_weapon_offer(), ["armor", 1], ["ring", 1]]
 	var content: Array = pool.pick_random() if not pool.is_empty() else ["heal", 1]
 	var chest := chest_scene.instantiate()
 	chest.name = "HiddenCache"
