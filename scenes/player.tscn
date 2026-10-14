@@ -167,7 +167,7 @@ offset_bottom = 180.0
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "Q Dash Slash: ready   W Whirl Slash: ready"
+text = "Q Dash Slash: ready   W Whirl Slash: ready   E Sinew Hook: ready"
 
 [node name="MaterialIcon" type="TextureRect" parent="Hud"]
 offset_left = 102.0
@@ -178,9 +178,9 @@ texture = ExtResource("2_crystal")
 expand_mode = 1
 
 [node name="MaterialLabel" type="Label" parent="Hud"]
-offset_left = 290.0
+offset_left = 332.0
 offset_top = 49.0
-offset_right = 450.0
+offset_right = 492.0
 offset_bottom = 77.0
 theme_override_constants/outline_size = 6
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
