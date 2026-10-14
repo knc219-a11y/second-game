@@ -1398,6 +1398,42 @@ func salvage_from_bag(index: int) -> void:
 	salvage(item.rarity)
 
 
+# Bag items no better than what's worn in their slot (their own forge counts);
+# items for an empty slot are kept. What salvage_worse_from_bag would break down.
+func worse_bag_indices() -> Array[int]:
+	var found: Array[int] = []
+	for i in bag.size():
+		var item: Dictionary = bag[i]
+		if not worn_item(item.kind).is_empty() and gear_diff(item.kind, item.value + item.forge) <= 0:
+			found.append(i)
+	return found
+
+
+# Inventory Space: breaks down every worse bag item at once (one popup for all).
+# Returns how many were salvaged.
+func salvage_worse_from_bag() -> int:
+	if is_dead:
+		return 0
+	var found := worse_bag_indices()
+	if found.is_empty():
+		_spawn_salvage_popup("Nothing worse in the bag", rarity_colors[0])
+		return 0
+	var amount := 0
+	var best := 0
+	found.reverse()
+	for i in found:
+		var item: Dictionary = bag[i]
+		amount += salvage_amounts[item.rarity]
+		best = maxi(best, item.rarity)
+		bag.remove_at(i)
+	materials += amount
+	print("Salvaged %d worse bag items into %d %s (now %d)" % [found.size(), amount, material_name, materials])
+	_update_material_label()
+	_save_gear()
+	_spawn_salvage_popup("Salvaged %d: +%d %s" % [found.size(), amount, material_name], rarity_colors[best])
+	return found.size()
+
+
 # Breaks a drop of this rarity down into Skin Crystal (popup_prefix leads the popup).
 func salvage(rarity: int, popup_prefix: String = "") -> void:
 	var amount := salvage_amounts[rarity]
