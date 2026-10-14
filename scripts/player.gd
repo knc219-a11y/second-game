@@ -260,6 +260,24 @@ var drop_luck: int = 0
 @export var whirl_flip_interval: float = 0.05
 @export var whirl_color: Color = Color(0.6, 1, 0.8, 1)
 @export var shake_whirl: float = 2.5
+# E skill, Sinew Hook: the Player stands still for hook_duration and lashes a
+# hook straight out along the facing (left/right only). Every enemy whose
+# hurtbox is inside the hook_range x hook_height box takes hook_damage and is
+# yanked toward the Player, landing hook_stop px in front (its own knockback,
+# reversed, so walls and rocks still stop it). Enemies mid-swing with super
+# armor (counters, leaps, tough ones) take the damage but stay put. It fills
+# the gap Q and W leave: reaching enemies at range and gathering a pack for W.
+# Placeholder look: a sinew-colored line that shoots out and snaps back.
+@export var hook_range: float = 260.0
+@export var hook_height: float = 56.0
+@export var hook_damage: int = 5
+@export var hook_stop: float = 50.0
+@export var hook_duration: float = 0.25
+@export var hook_cooldown: float = 6.0
+@export var hook_hitstop: float = 0.04
+@export var hook_hit_pitch: float = 0.75
+@export var hook_color: Color = Color(0.95, 0.55, 0.5, 1)
+@export var shake_hook: float = 2.0
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -345,6 +363,11 @@ var whirl_cooldown_left: float = 0.0
 # Facing when the spin started, restored when it ends.
 var whirl_facing: int = 1
 var whirl_hit_targets: Array[Node] = []
+var hook_time_left: float = 0.0
+var hook_cooldown_left: float = 0.0
+var hook_dir: int = 1
+var hook_shape := RectangleShape2D.new()
+var hook_line: Line2D
 
 @onready var visual: Node2D = $Visual
 @onready var camera: Camera2D = $Camera2D
@@ -369,11 +392,11 @@ var whirl_hit_targets: Array[Node] = []
 @onready var pet_label: Label = $Hud/PetLabel
 @onready var skill_label: Label = $Hud/SkillLabel
 @onready var material_label: Label = $Hud/MaterialLabel
-# Top-left status HUD, built in _build_status_hud: HP bar, Q/W cooldown boxes, active pet.
+# Top-left status HUD, built in _build_status_hud: HP bar, Q/W/E cooldown boxes, active pet.
 const HUD_HP_RECT := Rect2(16, 14, 300, 24)
 const HUD_ROW_Y := 46.0
 const HUD_SKILL_BOX := 34.0
-const HUD_PET_X := 470.0
+const HUD_PET_X := 512.0
 var hp_fill: ColorRect
 var hp_text: Label
 # White strip behind hp_fill showing the HP just lost: holds for
@@ -388,13 +411,13 @@ var hp_trail_wait: float = 0.0
 const HP_FILL_COLOR := Color(0.82, 0.18, 0.18, 1)
 @export var hp_low_color: Color = Color(1, 0.6, 0.55, 1)
 var hp_blink_time: float = 0.0
-# [shade, key label] per skill, Q then W.
+# [shade, key label] per skill, Q, W then E.
 var skill_boxes: Array = []
 var hud_pet_swatch: ColorRect
 var hud_pet_name: Label
-# Worn weapon box right of the Q/W boxes: rarity-colored frame, weapon icon
+# Worn weapon box right of the Q/W/E boxes: rarity-colored frame, weapon icon
 # (a colored square for tiers without art), then "Rare +3" in the rarity color.
-const HUD_WEAPON_X := 100.0
+const HUD_WEAPON_X := 142.0
 const CALLUS_BLADE_ICON := preload("res://art/stage1/drops/s1_drop_callus_blade.png")
 var hud_weapon_box: ColorRect
 var hud_weapon_icon: TextureRect
@@ -433,6 +456,8 @@ func _ready() -> void:
 	_build_shockwave_ring()
 	_build_whirl_ring()
 	dash_shape.size = dash_hit_size
+	hook_shape.size = Vector2(hook_range, hook_height)
+	_build_hook_line()
 	_update_skill_label()
 	_update_material_label()
 	# Deferred: equip_pet adds the pet to the map, which is still adding its children now.
@@ -506,6 +531,10 @@ func _physics_process(delta: float) -> void:
 		whirl_cooldown_left -= delta
 		_update_skill_label()
 
+	if hook_cooldown_left > 0.0:
+		hook_cooldown_left -= delta
+		_update_skill_label()
+
 	if shake_left > 0.0:
 		_update_shake(delta)
 
@@ -531,6 +560,11 @@ func _physics_process(delta: float) -> void:
 		_update_whirl(delta)
 		return
 
+	if hook_time_left > 0.0:
+		# Hooking: rooted, no roll, attack or other skill until it ends.
+		_update_hook(delta)
+		return
+
 	if roll_time_left <= 0.0 and roll_cooldown_left <= 0.0 and Input.is_action_just_pressed("roll"):
 		_start_roll(input)
 
@@ -542,6 +576,11 @@ func _physics_process(delta: float) -> void:
 	if roll_time_left <= 0.0 and whirl_cooldown_left <= 0.0 and Input.is_action_just_pressed("skill_w"):
 		_start_whirl()
 		_update_whirl(delta)
+		return
+
+	if roll_time_left <= 0.0 and hook_cooldown_left <= 0.0 and Input.is_action_just_pressed("skill_e"):
+		_start_hook()
+		_update_hook(delta)
 		return
 
 	if roll_time_left > 0.0:
@@ -750,14 +789,88 @@ func _whirl_hits() -> void:
 		_shake(shake_whirl)
 
 
+func _build_hook_line() -> void:
+	hook_line = Line2D.new()
+	hook_line.name = "HookLine"
+	hook_line.width = 4.0
+	hook_line.default_color = hook_color
+	hook_line.points = PackedVector2Array([Vector2(0, -32), Vector2(0, -32)])
+	hook_line.visible = false
+	add_child(hook_line)
+
+
+func _start_hook() -> void:
+	# Like the dash, the hook cancels any attack in progress.
+	if attack_phase != AttackPhase.NONE:
+		_cancel_attack()
+	hook_dir = facing
+	hook_time_left = hook_duration
+	hook_cooldown_left = hook_cooldown
+	hurt_knockback_left = 0.0
+	velocity = Vector2.ZERO
+	hook_line.visible = true
+	roll_sound.pitch_scale = 0.8
+	roll_sound.play()
+	_hook_hits()
+	_update_skill_label()
+
+
+func _update_hook(delta: float) -> void:
+	hook_time_left -= delta
+	# 0 at start -> 1 at the end: the line shoots out in the first 30%, then snaps back.
+	var t := clampf(1.0 - hook_time_left / hook_duration, 0.0, 1.0)
+	var reach := minf(t / 0.3, 1.0) if t < 0.3 else 1.0 - (t - 0.3) / 0.7
+	hook_line.points = PackedVector2Array([Vector2(hook_dir * 14, -32), Vector2(hook_dir * (14 + (hook_range - 14) * reach), -32)])
+	if hook_time_left <= 0.0:
+		_end_hook()
+
+
+func _end_hook() -> void:
+	hook_time_left = 0.0
+	if hook_line:
+		hook_line.visible = false
+
+
+# Every enemy hurtbox inside the hook box takes hook_damage and is pulled in,
+# all on the first frame (the line is only the look).
+func _hook_hits() -> void:
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = hook_shape
+	query.transform = Transform2D(0.0, global_position + Vector2(hook_dir * hook_range / 2.0, -29.0))
+	query.collision_mask = 2
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	var hit_targets: Array[Node] = []
+	for hit in get_world_2d().direct_space_state.intersect_shape(query, 16):
+		var target: Node = hit.collider.get_parent()
+		if target in hit_targets or not target.has_method("take_damage") or target.is_queued_for_deletion():
+			continue
+		hit_targets.append(target)
+		print("Sinew Hook hit %s" % target.name)
+		# Its knockback, reversed, carries it to hook_stop px in front.
+		var gap: float = (target.global_position.x - global_position.x) * hook_dir - hook_stop
+		var base: float = target.get("knockback_distance") if target.get("knockback_distance") else 0.0
+		if gap > 0.0 and base > 0.0:
+			target.take_damage(hook_damage, -hook_dir, gap / base, 1)
+		else:
+			target.take_damage(hook_damage, 0, 1.0, 1)
+	if not hit_targets.is_empty():
+		_start_hitstop(hook_hitstop)
+		hit_sound.pitch_scale = hook_hit_pitch
+		hit_sound.play()
+		_shake(shake_hook)
+
+
 func _update_skill_label() -> void:
 	var q := "%.1fs" % dash_cooldown_left if dash_cooldown_left > 0.0 else "ready"
 	var w := "%.1fs" % whirl_cooldown_left if whirl_cooldown_left > 0.0 else "ready"
-	skill_label.text = "Q Dash Slash: %s   W Whirl Slash: %s" % [q, w]
+	var e := "%.1fs" % hook_cooldown_left if hook_cooldown_left > 0.0 else "ready"
+	skill_label.text = "Q Dash Slash: %s   W Whirl Slash: %s   E Sinew Hook: %s" % [q, w, e]
 	if skill_boxes.is_empty():
 		return
 	_update_skill_box(0, "Q", dash_cooldown_left, dash_cooldown)
 	_update_skill_box(1, "W", whirl_cooldown_left, whirl_cooldown)
+	_update_skill_box(2, "E", hook_cooldown_left, hook_cooldown)
 
 
 # The dark shade covers the box by the share of cooldown left; the key letter turns into seconds left.
@@ -794,7 +907,7 @@ func _build_status_hud() -> void:
 	hp_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hp_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	back.add_child(hp_text)
-	for i in 2:
+	for i in 3:
 		var box := ColorRect.new()
 		box.position = Vector2(16 + i * (HUD_SKILL_BOX + 8), HUD_ROW_Y)
 		box.size = Vector2(HUD_SKILL_BOX, HUD_SKILL_BOX)
@@ -1854,6 +1967,7 @@ func _die() -> void:
 	_end_roll()
 	_end_dash()
 	_end_whirl()
+	_end_hook()
 	hurt_knockback_left = 0.0
 	shockwave_time_left = 0.0
 	shockwave_ring.visible = false
@@ -1886,7 +2000,7 @@ func _setup_sprite() -> void:
 func _update_sprite(delta: float) -> void:
 	sprite_anim_time += delta
 	var frame := 0
-	var busy := dash_time_left > 0.0 or whirl_time_left > 0.0 or hurt_knockback_left > 0.0 or is_dead
+	var busy := dash_time_left > 0.0 or whirl_time_left > 0.0 or hook_time_left > 0.0 or hurt_knockback_left > 0.0 or is_dead
 	# Facing can turn mid-swing, but the hitbox keeps the facing locked at the
 	# hit's start (attack_pivot), so the swing pose is drawn that way too.
 	sprite.flip_h = not busy and attack_phase != AttackPhase.NONE and int(attack_pivot.scale.x) != facing
