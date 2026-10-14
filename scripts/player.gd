@@ -376,6 +376,18 @@ const HUD_SKILL_BOX := 34.0
 const HUD_PET_X := 300.0
 var hp_fill: ColorRect
 var hp_text: Label
+# White strip behind hp_fill showing the HP just lost: holds for
+# hp_trail_delay, then shrinks to the fill at hp_trail_speed px/s.
+@export var hp_trail_delay: float = 0.4
+@export var hp_trail_speed: float = 240.0
+var hp_trail: ColorRect
+var hp_trail_wait: float = 0.0
+# At or below hp_low_ratio of max HP the fill blinks to hp_low_color.
+@export var hp_low_ratio: float = 0.3
+@export var hp_blink_period: float = 0.5
+const HP_FILL_COLOR := Color(0.82, 0.18, 0.18, 1)
+@export var hp_low_color: Color = Color(1, 0.6, 0.55, 1)
+var hp_blink_time: float = 0.0
 # [shade, key label] per skill, Q then W.
 var skill_boxes: Array = []
 var hud_pet_swatch: ColorRect
@@ -759,10 +771,15 @@ func _build_status_hud() -> void:
 	back.color = Color(0, 0, 0, 0.6)
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(back)
+	hp_trail = ColorRect.new()
+	hp_trail.position = Vector2(2, 2)
+	hp_trail.size = HUD_HP_RECT.size - Vector2(4, 4)
+	hp_trail.color = Color(1, 1, 1, 0.85)
+	back.add_child(hp_trail)
 	hp_fill = ColorRect.new()
 	hp_fill.position = Vector2(2, 2)
 	hp_fill.size = HUD_HP_RECT.size - Vector2(4, 4)
-	hp_fill.color = Color(0.82, 0.18, 0.18, 1)
+	hp_fill.color = HP_FILL_COLOR
 	back.add_child(hp_fill)
 	hp_text = _hud_label(18)
 	hp_text.size = HUD_HP_RECT.size
@@ -814,6 +831,27 @@ func _hud_label(font_size: int) -> Label:
 func _update_hp_bar() -> void:
 	hp_fill.size.x = (HUD_HP_RECT.size.x - 4) * float(hp) / max_hp
 	hp_text.text = "HP %d / %d" % [hp, max_hp]
+	# A heal (or the first build) pulls the trail up to the fill; a hit leaves it
+	# behind and restarts the hold.
+	if hp_trail.size.x <= hp_fill.size.x:
+		hp_trail.size.x = hp_fill.size.x
+	else:
+		hp_trail_wait = hp_trail_delay
+
+
+# Each frame: shrink the lost-HP trail after its hold, blink the fill at low HP.
+func _tick_hp_bar(delta: float) -> void:
+	if hp_trail.size.x > hp_fill.size.x:
+		if hp_trail_wait > 0.0:
+			hp_trail_wait -= delta
+		else:
+			hp_trail.size.x = maxf(hp_trail.size.x - hp_trail_speed * delta, hp_fill.size.x)
+	if hp > 0 and hp <= max_hp * hp_low_ratio:
+		hp_blink_time = fmod(hp_blink_time + delta, hp_blink_period)
+		hp_fill.color = hp_low_color if hp_blink_time >= hp_blink_period * 0.5 else HP_FILL_COLOR
+	else:
+		hp_blink_time = 0.0
+		hp_fill.color = HP_FILL_COLOR
 
 
 func _set_passing_enemies(on: bool) -> void:
@@ -1817,6 +1855,7 @@ func _process(delta: float) -> void:
 		_update_sprite(delta)
 	# The bag changes from pickups, the inventory and loading; checked every frame.
 	_update_bag_full()
+	_tick_hp_bar(delta)
 	# _physics_process is off after death, so the restart key is read here.
 	if is_dead and Input.is_action_just_pressed("restart"):
 		_restart()
