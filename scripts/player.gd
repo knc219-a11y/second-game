@@ -396,7 +396,7 @@ var hook_line: Line2D
 const HUD_HP_RECT := Rect2(16, 14, 300, 24)
 const HUD_ROW_Y := 46.0
 const HUD_SKILL_BOX := 34.0
-const HUD_PET_X := 512.0
+const HUD_PET_X := 700.0
 var hp_fill: ColorRect
 var hp_text: Label
 # White strip behind hp_fill showing the HP just lost: holds for
@@ -423,6 +423,16 @@ var hud_weapon_box: ColorRect
 var hud_weapon_icon: TextureRect
 var hud_weapon_swatch: ColorRect
 var hud_weapon_text: Label
+# Armor and ring boxes after the weapon text, same frame and rarity colors; the
+# text is only the total value ("-3" damage taken, "+4" roll graze).
+const HUD_ARMOR_X := 332.0
+const HUD_RING_X := 406.0
+const ARMOR_ICON := preload("res://art/stage1/drops/s1_drop_husk_shard.png")
+const NERVE_RING_ICON := preload("res://art/stage1/drops/s1_drop_nerve_ring.png")
+var hud_armor_box: ColorRect
+var hud_armor_text: Label
+var hud_ring_box: ColorRect
+var hud_ring_text: Label
 # "Bag full" warning right of the HP bar while the bag holds bag_size items;
 # it flashes each time a passed-on drop auto-salvages because of it.
 const HUD_BAG_FULL_POS := Vector2(330, 12)
@@ -925,33 +935,20 @@ func _build_status_hud() -> void:
 		letter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		box.add_child(letter)
 		skill_boxes.append([shade, letter])
-	hud_weapon_box = ColorRect.new()
-	hud_weapon_box.position = Vector2(HUD_WEAPON_X, HUD_ROW_Y)
-	hud_weapon_box.size = Vector2(HUD_SKILL_BOX, HUD_SKILL_BOX)
-	hud_weapon_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud_weapon_box.visible = false
-	hud.add_child(hud_weapon_box)
-	var inner := ColorRect.new()
-	inner.position = Vector2(3, 3)
-	inner.size = Vector2(HUD_SKILL_BOX - 6, HUD_SKILL_BOX - 6)
-	inner.color = Color(0.12, 0.1, 0.1, 0.95)
-	hud_weapon_box.add_child(inner)
-	hud_weapon_icon = TextureRect.new()
-	hud_weapon_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	hud_weapon_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	hud_weapon_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	hud_weapon_icon.texture = CALLUS_BLADE_ICON
-	hud_weapon_icon.position = Vector2(3, 3)
-	hud_weapon_icon.size = inner.size
-	hud_weapon_box.add_child(hud_weapon_icon)
+	var weapon := _add_hud_gear_box(hud, HUD_WEAPON_X, CALLUS_BLADE_ICON)
+	hud_weapon_box = weapon[0]
+	hud_weapon_icon = weapon[1]
+	hud_weapon_text = weapon[2]
 	hud_weapon_swatch = ColorRect.new()
 	hud_weapon_swatch.position = Vector2(9, 9)
 	hud_weapon_swatch.size = Vector2(HUD_SKILL_BOX - 18, HUD_SKILL_BOX - 18)
 	hud_weapon_box.add_child(hud_weapon_swatch)
-	hud_weapon_text = _hud_label(20)
-	hud_weapon_text.position = Vector2(HUD_WEAPON_X + HUD_SKILL_BOX + 6, HUD_ROW_Y + 3)
-	hud_weapon_text.visible = false
-	hud.add_child(hud_weapon_text)
+	var armor := _add_hud_gear_box(hud, HUD_ARMOR_X, ARMOR_ICON)
+	hud_armor_box = armor[0]
+	hud_armor_text = armor[2]
+	var ring := _add_hud_gear_box(hud, HUD_RING_X, NERVE_RING_ICON)
+	hud_ring_box = ring[0]
+	hud_ring_text = ring[2]
 	hud_pet_swatch = ColorRect.new()
 	hud_pet_swatch.position = Vector2(HUD_PET_X, HUD_ROW_Y + 7)
 	hud_pet_swatch.size = Vector2(20, 20)
@@ -1338,23 +1335,68 @@ func _update_weapon_label() -> void:
 	_update_hud_weapon()
 
 
+# [frame, icon, text]: a rarity-colored frame with the gear icon inside and a
+# label to its right; both hidden until something is worn there.
+func _add_hud_gear_box(hud: CanvasLayer, x: float, icon_texture: Texture2D) -> Array:
+	var box := ColorRect.new()
+	box.position = Vector2(x, HUD_ROW_Y)
+	box.size = Vector2(HUD_SKILL_BOX, HUD_SKILL_BOX)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.visible = false
+	hud.add_child(box)
+	var inner := ColorRect.new()
+	inner.position = Vector2(3, 3)
+	inner.size = Vector2(HUD_SKILL_BOX - 6, HUD_SKILL_BOX - 6)
+	inner.color = Color(0.12, 0.1, 0.1, 0.95)
+	box.add_child(inner)
+	var icon := TextureRect.new()
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.texture = icon_texture
+	icon.position = Vector2(3, 3)
+	icon.size = inner.size
+	box.add_child(icon)
+	var text := _hud_label(20)
+	text.position = Vector2(x + HUD_SKILL_BOX + 6, HUD_ROW_Y + 3)
+	text.visible = false
+	hud.add_child(text)
+	return [box, icon, text]
+
+
+# Shows or hides one HUD gear box and colors frame and text by rarity.
+func _set_hud_gear(box: ColorRect, text: Label, worn: bool, rarity: int, value_text: String) -> void:
+	box.visible = worn
+	text.visible = worn
+	if not worn:
+		return
+	box.color = rarity_colors[rarity]
+	text.text = value_text
+	text.add_theme_color_override("font_color", rarity_colors[rarity])
+
+
+func _update_hud_armor() -> void:
+	if hud_armor_box != null:
+		_set_hud_gear(hud_armor_box, hud_armor_text, has_armor, armor_rarity, "-%d" % (armor_value + armor_forge))
+
+
+func _update_hud_ring() -> void:
+	if hud_ring_box != null:
+		_set_hud_gear(hud_ring_box, hud_ring_text, has_ring, ring_rarity, "+%d" % (ring_value + ring_forge))
+
+
 # HUD weapon box: hidden with no weapon; the frame and text take the rarity color,
 # the number is the total damage bonus (rolled + forge).
 func _update_hud_weapon() -> void:
 	if hud_weapon_box == null:
 		return
 	var worn := weapon_tier > 0
-	hud_weapon_box.visible = worn
-	hud_weapon_text.visible = worn
+	_set_hud_gear(hud_weapon_box, hud_weapon_text, worn, weapon_rarity, "%s +%d" % [RARITY_NAMES[weapon_rarity], weapon_bonus + weapon_forge])
 	if not worn:
 		return
-	var color: Color = rarity_colors[weapon_rarity]
-	hud_weapon_box.color = color
 	hud_weapon_icon.visible = weapon_tier == 1
 	hud_weapon_swatch.visible = weapon_tier != 1
 	hud_weapon_swatch.color = weapon_arc_color[weapon_tier - 1]
-	hud_weapon_text.text = "%s +%d" % [RARITY_NAMES[weapon_rarity], weapon_bonus + weapon_forge]
-	hud_weapon_text.add_theme_color_override("font_color", color)
 
 
 # This kind's forge level (0 when nothing is worn there).
@@ -1431,6 +1473,7 @@ func _update_armor_label() -> void:
 	if armor_forge > 0:
 		text += ", Forge +%d (-%d)" % [armor_forge, armor_value + armor_forge]
 	armor_label.text = "Armor: %s damage taken" % text
+	_update_hud_armor()
 
 
 func _update_ring_label() -> void:
@@ -1438,6 +1481,7 @@ func _update_ring_label() -> void:
 	if ring_forge > 0:
 		text += ", Forge +%d (%d)" % [ring_forge, ring_value + ring_forge]
 	ring_label.text = "Ring: %s roll graze" % text
+	_update_hud_ring()
 
 
 # value < 0 means the plain base (a Common of armor_damage_reduction).
