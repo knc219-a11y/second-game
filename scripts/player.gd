@@ -112,6 +112,11 @@ var drop_luck: int = 0
 # salvaged by hand later. Only once bag_size items are in it do such drops
 # auto-salvage as above. Saved in SAVE_PATH [bag] items (older saves load empty).
 @export var bag_size: int = 12
+# Once nothing worn can be forged, the blacksmith's C buys bag_grow_slots more
+# bag slots for bag_grow_costs[bag_grows] Skin Crystal, once per cost (12 -> 24).
+# bag_grows is saved in SAVE_PATH [bag] grows (older saves load 0).
+@export var bag_grow_slots: int = 4
+@export var bag_grow_costs: Array[int] = [20, 30, 40]
 # A gear drop shows how it compares to what's worn (compare_text: "+2 better",
 # "-1 worse", "Same", "New") above its name on the ground and in the pickup
 # popup, in these colors.
@@ -313,6 +318,8 @@ var armor_forge: int = 0
 var ring_forge: int = 0
 # Skin Crystal from auto-salvage (see salvage_amounts).
 var materials: int = 0
+# Bag slots bought at the blacksmith (see bag_grow_costs).
+var bag_grows: int = 0
 # Bag items, oldest first: {"kind": "weapon"/"armor"/"ring", "tier", "rarity", "value", "forge"}.
 var bag: Array[Dictionary] = []
 # Enemies already grazed by the current roll (Nerve Ring).
@@ -1183,12 +1190,9 @@ func forge_next() -> bool:
 	if is_dead:
 		return false
 	var kind := forge_target()
-	if not has_armor and not has_ring and weapon_tier == 0:
-		_spawn_salvage_popup("No gear to forge", rarity_colors[0])
-		return false
 	if kind == "":
-		_spawn_salvage_popup("Forge maxed", rarity_colors[0])
-		return false
+		# Nothing to forge (all maxed, or nothing worn): grow the bag instead.
+		return grow_bag()
 	var cost := forge_cost()
 	if materials < cost:
 		_spawn_salvage_popup("Need %d %s" % [cost, material_name], Color(1, 0.4, 0.35, 1))
@@ -1358,6 +1362,32 @@ func wear_from_bag(index: int) -> void:
 	play_pickup_sound()
 
 
+# Skin Crystal for the next bag_grow_slots bag slots, or -1 once all are bought.
+func bag_grow_cost() -> int:
+	return bag_grow_costs[bag_grows] if bag_grows < bag_grow_costs.size() else -1
+
+
+# Blacksmith, once nothing can be forged: spends Skin Crystal for
+# bag_grow_slots more bag slots. Pops up the result; returns true if it grew.
+func grow_bag() -> bool:
+	var cost := bag_grow_cost()
+	if cost < 0:
+		_spawn_salvage_popup("Forge and bag maxed", rarity_colors[0])
+		return false
+	if materials < cost:
+		_spawn_salvage_popup("Need %d %s" % [cost, material_name], Color(1, 0.4, 0.35, 1))
+		return false
+	materials -= cost
+	bag_size += bag_grow_slots
+	bag_grows += 1
+	print("Bag grown to %d for %d %s (now %d)" % [bag_size, cost, material_name, materials])
+	_update_material_label()
+	_save_gear()
+	play_pickup_sound(0.8)
+	_spawn_salvage_popup("Bag +%d! (%d slots)" % [bag_grow_slots, bag_size], rarity_colors[2])
+	return true
+
+
 # Breaks bag item index down into Skin Crystal (a forged piece's levels are lost).
 func salvage_from_bag(index: int) -> void:
 	if is_dead or index < 0 or index >= bag.size():
@@ -1475,6 +1505,7 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "owned_pets", owned_pets)
 	cfg.set_value("materials", "skin_crystal", materials)
 	cfg.set_value("bag", "items", bag)
+	cfg.set_value("bag", "grows", bag_grows)
 	cfg.save(SAVE_PATH)
 
 
@@ -1486,6 +1517,9 @@ func _load_gear() -> void:
 	# Saves from before salvage load with 0.
 	materials = maxi(0, cfg.get_value("materials", "skin_crystal", 0))
 	_update_material_label()
+	var grows: int = clampi(cfg.get_value("bag", "grows", 0), 0, bag_grow_costs.size())
+	bag_size += (grows - bag_grows) * bag_grow_slots
+	bag_grows = grows
 	_load_bag(cfg.get_value("bag", "items", []))
 	var tier: int = clampi(cfg.get_value("gear", "weapon_tier", 0), 0, weapon_names.size())
 	var kind: int = clampi(cfg.get_value("gear", "pet_kind", 0), 0, pet_names.size())

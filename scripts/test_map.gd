@@ -232,7 +232,8 @@ var in_hub: bool = false
 var hub_gates: Array = []
 # Town blacksmith (placeholder anvil, town only): standing within
 # blacksmith_radius and pressing `interact` (C) forges the worn piece with the
-# lowest level +1 for Skin Crystal (player.gd forge_next / forge_costs). Its
+# lowest level +1 for Skin Crystal (player.gd forge_next / forge_costs), or
+# once nothing can be forged, buys more bag slots (player.gd grow_bag). Its
 # label shows that piece and the cost.
 const BLACKSMITH_POSITION := Vector2(330, 260)
 @export var blacksmith_radius: float = 80.0
@@ -395,10 +396,12 @@ func _update_blacksmith_label() -> void:
 	var cost: int = player.forge_cost()
 	var kind: String = player.forge_target()
 	var line := "Forge %s +%d: %d %s" % [kind.capitalize(), player.forge_level(kind) + 1, cost, player.material_name]
-	if player.weapon_tier == 0 and not player.has_armor and not player.has_ring:
-		line = "Bring gear to forge"
-	elif cost < 0:
-		line = "Forge maxed"
+	if cost < 0:
+		# Nothing to forge: C buys bag slots instead (player.gd grow_bag).
+		cost = player.bag_grow_cost()
+		line = "Bag +%d slots: %d %s" % [player.bag_grow_slots, cost, player.material_name]
+		if cost < 0:
+			line = "Forge and bag maxed"
 	var near := _near_blacksmith()
 	if near and cost > 0:
 		line = "[C] " + line
