@@ -279,6 +279,22 @@ var drop_luck: int = 0
 @export var hook_hit_pitch: float = 0.75
 @export var hook_color: Color = Color(0.95, 0.55, 0.5, 1)
 @export var shake_hook: float = 2.0
+# Parry (Z): optional. Facing an enemy, a press opens parry_window s of guard;
+# a melee swing or leap that would land on the Player in that time does no
+# damage and the enemy is staggered (enemy.gd parried(), stagger_duration),
+# an opening for a free combo. The guard is rooted: no moving, attacking or
+# rolling. A whiff stays rooted parry_recovery s more and parry_cooldown runs
+# from the press; a parry frees the Player at once and resets the cooldown.
+# Ranged shots aren't Z's job: an X swing already swats them (parry_pitch).
+# Placeholder look: a pale blue tint and a guard bar in front while open,
+# grey during the whiff recovery.
+@export var parry_window: float = 0.2
+@export var parry_recovery: float = 0.25
+@export var parry_cooldown: float = 0.8
+@export var parry_hitstop: float = 0.12
+@export var parry_color: Color = Color(0.6, 0.85, 1, 1)
+@export var parry_whiff_color: Color = Color(0.6, 0.6, 0.6, 1)
+@export var shake_parry: float = 5.0
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -375,6 +391,11 @@ var hook_cooldown_left: float = 0.0
 var hook_dir: int = 1
 var hook_shape := RectangleShape2D.new()
 var hook_line: Line2D
+# Window + whiff recovery left (rooted while > 0); the guard is open while > parry_recovery.
+var parry_time_left: float = 0.0
+var parry_cooldown_left: float = 0.0
+var parry_bar: Polygon2D
+var parries: int = 0
 
 @onready var visual: Node2D = $Visual
 @onready var camera: Camera2D = $Camera2D
@@ -475,6 +496,7 @@ func _ready() -> void:
 	dash_shape.size = dash_hit_size
 	hook_shape.size = Vector2(hook_range, hook_height)
 	_build_hook_line()
+	_build_parry_bar()
 	_update_skill_label()
 	_update_material_label()
 	# Deferred: equip_pet adds the pet to the map, which is still adding its children now.
@@ -552,6 +574,9 @@ func _physics_process(delta: float) -> void:
 		hook_cooldown_left -= delta
 		_update_skill_label()
 
+	if parry_cooldown_left > 0.0:
+		parry_cooldown_left -= delta
+
 	if shake_left > 0.0:
 		_update_shake(delta)
 
@@ -580,6 +605,15 @@ func _physics_process(delta: float) -> void:
 	if hook_time_left > 0.0:
 		# Hooking: rooted, no roll, attack or other skill until it ends.
 		_update_hook(delta)
+		return
+
+	if parry_time_left > 0.0:
+		# Guarding or whiffed: rooted, no roll, attack or skill until it ends.
+		_update_parry(delta)
+		return
+
+	if roll_time_left <= 0.0 and parry_cooldown_left <= 0.0 and hurt_knockback_left <= 0.0 and Input.is_action_just_pressed("parry"):
+		_start_parry()
 		return
 
 	if roll_time_left <= 0.0 and roll_cooldown_left <= 0.0 and Input.is_action_just_pressed("roll"):
@@ -840,6 +874,69 @@ func _update_hook(delta: float) -> void:
 	hook_line.points = PackedVector2Array([Vector2(hook_dir * 14, -32), Vector2(hook_dir * (14 + (hook_range - 14) * reach), -32)])
 	if hook_time_left <= 0.0:
 		_end_hook()
+
+
+func _build_parry_bar() -> void:
+	parry_bar = Polygon2D.new()
+	parry_bar.name = "ParryBar"
+	parry_bar.polygon = PackedVector2Array([Vector2(16, -58), Vector2(22, -58), Vector2(22, -6), Vector2(16, -6)])
+	parry_bar.color = parry_color
+	parry_bar.visible = false
+	visual.add_child(parry_bar)
+
+
+func _start_parry() -> void:
+	# Like the skills, the parry cancels any attack in progress.
+	if attack_phase != AttackPhase.NONE:
+		_cancel_attack()
+	parry_time_left = parry_window + parry_recovery
+	parry_cooldown_left = parry_cooldown
+	velocity = Vector2.ZERO
+	visual.modulate = parry_color
+	parry_bar.visible = true
+
+
+func _update_parry(delta: float) -> void:
+	parry_time_left -= delta
+	if parry_time_left <= 0.0:
+		_end_parry()
+	elif parry_time_left <= parry_recovery and parry_bar.visible:
+		# Window closed with nothing parried: the whiff recovery.
+		parry_bar.visible = false
+		visual.modulate = parry_whiff_color
+
+
+func _end_parry() -> void:
+	parry_time_left = 0.0
+	visual.modulate = Color(1, 1, 1, 1)
+	if parry_bar:
+		parry_bar.visible = false
+
+
+func is_parrying() -> bool:
+	return parry_time_left > parry_recovery
+
+
+# Called by an enemy whose melee hit is about to land (enemy.gd _apply_hit).
+# True = parried: no damage, and the enemy staggers itself.
+func try_parry(attacker: Node2D) -> bool:
+	if is_dead or not is_parrying():
+		return false
+	# Left/right only: the guard covers the side the Player faces.
+	var side := 1 if attacker.global_position.x >= global_position.x else -1
+	if side != facing:
+		return false
+	parries += 1
+	print("Parry!")
+	_end_parry()
+	parry_cooldown_left = 0.0
+	hit_sound.pitch_scale = 1.8
+	hit_sound.play()
+	_spawn_graze_spark(global_position + Vector2(facing * 22, -32))
+	_spawn_salvage_popup("PARRY!", parry_color)
+	_shake(shake_parry)
+	_start_hitstop(parry_hitstop)
+	return true
 
 
 func _end_hook() -> void:
@@ -2009,6 +2106,9 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	_update_hp_bar()
 	print("Player HP: %d" % hp)
 	hurt_sound.play()
+	# A hit during the guard or whiff ends it so the push can apply.
+	if parry_time_left > 0.0:
+		_end_parry()
 	if hp <= 0:
 		_die()
 		return
@@ -2040,6 +2140,7 @@ func _die() -> void:
 	_end_dash()
 	_end_whirl()
 	_end_hook()
+	_end_parry()
 	hurt_knockback_left = 0.0
 	shockwave_time_left = 0.0
 	shockwave_ring.visible = false
