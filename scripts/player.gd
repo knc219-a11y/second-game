@@ -108,6 +108,12 @@ var drop_luck: int = 0
 # salvaged by hand later. Only once bag_size items are in it do such drops
 # auto-salvage as above. Saved in SAVE_PATH [bag] items (older saves load empty).
 @export var bag_size: int = 12
+# A gear drop shows how it compares to what's worn (compare_text: "+2 better",
+# "-1 worse", "Same", "New") above its name on the ground and in the pickup
+# popup, in these colors.
+@export var compare_better_color: Color = Color(0.45, 1, 0.45, 1)
+@export var compare_worse_color: Color = Color(1, 0.45, 0.4, 1)
+@export var compare_same_color: Color = Color(0.75, 0.75, 0.75, 1)
 # Placeholder spark burst at each graze (grows and fades over graze_spark_duration),
 # and a crackling halo behind the Player while rolling with the ring.
 @export var graze_spark_color: Color = Color(1, 0.8, 0.25, 1)
@@ -1200,7 +1206,8 @@ func _bag_or_salvage(kind: String, tier: int, rarity: int, value: int) -> void:
 	bag.append({"kind": kind, "tier": tier, "rarity": rarity, "value": value, "forge": 0})
 	print("Bagged %s (%d/%d)" % [gear_text(kind, tier, rarity, value), bag.size(), bag_size])
 	_save_gear()
-	_spawn_salvage_popup("Bag: %s" % gear_text(kind, tier, rarity, value), rarity_colors[rarity])
+	_spawn_salvage_popup("Bag: %s (%s)" % [gear_text(kind, tier, rarity, value), compare_text(kind, value)],
+		compare_color(kind, value))
 
 
 # What's worn in this kind's slot, as a bag item ({} when the slot is empty).
@@ -1213,6 +1220,34 @@ func worn_item(kind: String) -> Dictionary:
 	if weapon_tier == 0:
 		return {}
 	return {"kind": kind, "tier": weapon_tier, "rarity": weapon_rarity, "value": weapon_bonus, "forge": weapon_forge}
+
+
+# How much a drop of this kind and value beats what's worn (a weapon counts the
+# worn forge levels, like equip_weapon does); an empty slot counts as 0.
+func gear_diff(kind: String, value: int) -> int:
+	var worn := worn_item(kind)
+	if worn.is_empty():
+		return value
+	return value - worn.value - worn.forge
+
+
+# The comparison shown over a gear drop and in its pickup popup.
+func compare_text(kind: String, value: int) -> String:
+	if worn_item(kind).is_empty():
+		return "New"
+	var diff := gear_diff(kind, value)
+	if diff > 0:
+		return "+%d better" % diff
+	if diff < 0:
+		return "%d worse" % diff
+	return "Same"
+
+
+func compare_color(kind: String, value: int) -> Color:
+	var diff := gear_diff(kind, value)
+	if diff > 0:
+		return compare_better_color
+	return compare_worse_color if diff < 0 else compare_same_color
 
 
 # Wears bag item index even if it's worse; whatever was worn takes its bag slot.
@@ -1272,13 +1307,13 @@ func _spawn_salvage_popup(text: String, color: Color) -> void:
 	var label := Label.new()
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.size = Vector2(200, 30)
+	label.size = Vector2(400, 30)
 	label.add_theme_font_size_override("font_size", 18)
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_constant_override("outline_size", 5)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
 	label.z_index = 20
-	label.position = global_position + Vector2(-100, -130)
+	label.position = global_position + Vector2(-200, -130)
 	get_parent().add_child(label)
 	var tween := label.create_tween()
 	tween.tween_property(label, "position:y", label.position.y - salvage_popup_rise, salvage_popup_time) \
