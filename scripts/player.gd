@@ -1488,7 +1488,13 @@ func _update_material_label() -> void:
 
 
 # A one-off Label in the world above the Player (like enemy damage numbers).
+# While the inventory is open it would sit frozen behind the dark panel, so the
+# inventory shows it as its own message line instead.
 func _spawn_salvage_popup(text: String, color: Color) -> void:
+	var inventory := get_node_or_null("../../Inventory")
+	if inventory != null and inventory.visible:
+		inventory.show_message(text, color)
+		return
 	var label := Label.new()
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
