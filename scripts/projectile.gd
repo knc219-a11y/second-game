@@ -36,6 +36,10 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Enemy shots slow down with the Player's parry slow-mo too.
+	var p := get_tree().get_first_node_in_group("player")
+	if not hits_enemies and p != null and p.has_method("enemy_time_scale"):
+		delta *= p.enemy_time_scale()
 	if hits_enemies:
 		position += aim * speed * delta
 	else:

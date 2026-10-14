@@ -78,12 +78,13 @@ extends CharacterBody2D
 @export var counter_startup: float = 0.45
 @export var counter_damage: int = 5
 # Parried by the Player (player.gd try_parry): the swing or leap is cancelled,
-# it is pushed parry_push px away and stands dazed for stagger_duration s
-# (stagger_color tint): no moving or attacking, and hits on it don't set up a
-# counter. Its next swing waits stagger_attack_delay s more after that.
+# it is pushed parry_push px away (0: stays in reach) and stands dazed for stagger_duration s
+# (stagger_color tint): no moving or attacking, and hits on it neither push it
+# out of reach nor set up a counter, so a whole combo lands. Its next swing
+# waits stagger_attack_delay s more after that.
 @export var stagger_duration: float = 1.0
 @export var stagger_attack_delay: float = 0.3
-@export var parry_push: float = 20.0
+@export var parry_push: float = 0.0
 @export var stagger_color: Color = Color(0.55, 0.75, 1, 1)
 # Leap (Stage 1 camp leader only; off while leap_distance is 0): standing on the
 # Player's line leap_min..leap_range px away with the leap ready, it winds up
@@ -196,6 +197,8 @@ var counter_ready: bool = false
 var is_counter: bool = false
 var is_leaping: bool = false
 var stagger_left: float = 0.0
+# This frame's speed from the Player's parry slow-mo (1 = normal).
+var time_scale: float = 1.0
 var leap_cooldown_left: float = 0.0
 var warn_polygon: PackedVector2Array
 # Ranged variant: 1 = down, -1 = up while sidestepping round something, else 0.
@@ -233,6 +236,9 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Parry slow-mo: everything here (timers, swings, walking) runs slower.
+	time_scale = player.enemy_time_scale() if is_instance_valid(player) and player.has_method("enemy_time_scale") else 1.0
+	delta *= time_scale
 	if cooldown_left > 0.0:
 		cooldown_left -= delta
 	if leap_cooldown_left > 0.0:
@@ -412,7 +418,7 @@ func _chase(delta: float) -> void:
 	# Capped so the last step lands on the spot instead of overshooting (no jitter).
 	var speed := minf(move_speed, to_spot.length() / delta)
 	velocity = to_spot.normalized() * speed
-	move_and_slide()
+	_slide()
 
 
 # Ranged variant: hold keep_distance px to the Player's current side on its line
@@ -451,7 +457,15 @@ func _keep_range(to_player: Vector2, delta: float) -> void:
 		velocity = Vector2(0.0, sidestep_dir * move_speed)
 	else:
 		sidestep_dir = 0
+	_slide()
+
+
+# move_and_slide at the parry slow-mo speed.
+func _slide() -> void:
+	var full := velocity
+	velocity *= time_scale
 	move_and_slide()
+	velocity = full
 
 
 # How far (px) from the Player the ranged enemy can stand on side s with a clear
@@ -646,6 +660,8 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 
 	if (super_armor or is_counter or is_leaping) and attack_phase != AttackPhase.NONE:
 		return
+	if stagger_left > 0.0:
+		return
 	if direction != 0 and knockback_duration > 0.0:
 		# Knockback interrupts the attack; the cooldown keeps running.
 		if attack_phase != AttackPhase.NONE:
@@ -653,7 +669,7 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 		knockback_dir = direction
 		knockback_time_left = knockback_duration
 		knockback_push = knockback_distance * knockback_scale
-		if not super_armor and not is_ranged and stagger_left <= 0.0:
+		if not super_armor and not is_ranged:
 			counter_ready = true
 
 
