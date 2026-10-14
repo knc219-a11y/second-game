@@ -373,7 +373,7 @@ var whirl_hit_targets: Array[Node] = []
 const HUD_HP_RECT := Rect2(16, 14, 300, 24)
 const HUD_ROW_Y := 46.0
 const HUD_SKILL_BOX := 34.0
-const HUD_PET_X := 300.0
+const HUD_PET_X := 470.0
 var hp_fill: ColorRect
 var hp_text: Label
 # White strip behind hp_fill showing the HP just lost: holds for
@@ -392,6 +392,14 @@ var hp_blink_time: float = 0.0
 var skill_boxes: Array = []
 var hud_pet_swatch: ColorRect
 var hud_pet_name: Label
+# Worn weapon box right of the Q/W boxes: rarity-colored frame, weapon icon
+# (a colored square for tiers without art), then "Rare +3" in the rarity color.
+const HUD_WEAPON_X := 100.0
+const CALLUS_BLADE_ICON := preload("res://art/stage1/drops/s1_drop_callus_blade.png")
+var hud_weapon_box: ColorRect
+var hud_weapon_icon: TextureRect
+var hud_weapon_swatch: ColorRect
+var hud_weapon_text: Label
 # "Bag full" warning right of the HP bar while the bag holds bag_size items;
 # it flashes each time a passed-on drop auto-salvages because of it.
 const HUD_BAG_FULL_POS := Vector2(330, 12)
@@ -804,6 +812,33 @@ func _build_status_hud() -> void:
 		letter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		box.add_child(letter)
 		skill_boxes.append([shade, letter])
+	hud_weapon_box = ColorRect.new()
+	hud_weapon_box.position = Vector2(HUD_WEAPON_X, HUD_ROW_Y)
+	hud_weapon_box.size = Vector2(HUD_SKILL_BOX, HUD_SKILL_BOX)
+	hud_weapon_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_weapon_box.visible = false
+	hud.add_child(hud_weapon_box)
+	var inner := ColorRect.new()
+	inner.position = Vector2(3, 3)
+	inner.size = Vector2(HUD_SKILL_BOX - 6, HUD_SKILL_BOX - 6)
+	inner.color = Color(0.12, 0.1, 0.1, 0.95)
+	hud_weapon_box.add_child(inner)
+	hud_weapon_icon = TextureRect.new()
+	hud_weapon_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hud_weapon_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hud_weapon_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	hud_weapon_icon.texture = CALLUS_BLADE_ICON
+	hud_weapon_icon.position = Vector2(3, 3)
+	hud_weapon_icon.size = inner.size
+	hud_weapon_box.add_child(hud_weapon_icon)
+	hud_weapon_swatch = ColorRect.new()
+	hud_weapon_swatch.position = Vector2(9, 9)
+	hud_weapon_swatch.size = Vector2(HUD_SKILL_BOX - 18, HUD_SKILL_BOX - 18)
+	hud_weapon_box.add_child(hud_weapon_swatch)
+	hud_weapon_text = _hud_label(20)
+	hud_weapon_text.position = Vector2(HUD_WEAPON_X + HUD_SKILL_BOX + 6, HUD_ROW_Y + 3)
+	hud_weapon_text.visible = false
+	hud.add_child(hud_weapon_text)
 	hud_pet_swatch = ColorRect.new()
 	hud_pet_swatch.position = Vector2(HUD_PET_X, HUD_ROW_Y + 7)
 	hud_pet_swatch.size = Vector2(20, 20)
@@ -1187,6 +1222,26 @@ func _update_weapon_label() -> void:
 	if weapon_forge > 0:
 		text += ", Forge +%d (+%d)" % [weapon_forge, weapon_bonus + weapon_forge]
 	weapon_label.text = "Weapon: %s damage" % text
+	_update_hud_weapon()
+
+
+# HUD weapon box: hidden with no weapon; the frame and text take the rarity color,
+# the number is the total damage bonus (rolled + forge).
+func _update_hud_weapon() -> void:
+	if hud_weapon_box == null:
+		return
+	var worn := weapon_tier > 0
+	hud_weapon_box.visible = worn
+	hud_weapon_text.visible = worn
+	if not worn:
+		return
+	var color: Color = rarity_colors[weapon_rarity]
+	hud_weapon_box.color = color
+	hud_weapon_icon.visible = weapon_tier == 1
+	hud_weapon_swatch.visible = weapon_tier != 1
+	hud_weapon_swatch.color = weapon_arc_color[weapon_tier - 1]
+	hud_weapon_text.text = "%s +%d" % [RARITY_NAMES[weapon_rarity], weapon_bonus + weapon_forge]
+	hud_weapon_text.add_theme_color_override("font_color", color)
 
 
 # This kind's forge level (0 when nothing is worn there).
