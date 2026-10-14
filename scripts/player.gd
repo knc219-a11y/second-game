@@ -102,7 +102,8 @@ var drop_luck: int = 0
 # 1 to that piece's value: weapon +1 basic-attack damage, armor 1 less damage
 # taken, ring +1 graze damage. Armor stops at armor_forge_max (+2) so it stays
 # small. One press forges the worn piece with the lowest level (ties: weapon,
-# armor, ring; see forge_target). The level belongs to that piece: a drop only
+# armor, ring; see forge_target), unless X at the anvil picked another piece
+# (cycle_forge_choice). The level belongs to that piece: a drop only
 # replaces it if its value beats value + forge, and the new piece starts at 0.
 # Saved in SAVE_PATH [gear] weapon_forge / armor_forge / ring_forge (older saves load 0).
 @export var forge_costs: Array[int] = [5, 10, 20]
@@ -336,6 +337,12 @@ var ring_value: int = 0
 # Blacksmith levels of the worn armor and ring (see forge_costs).
 var armor_forge: int = 0
 var ring_forge: int = 0
+# Piece picked at the blacksmith with X (cycle_forge_choice); "" = lowest level
+# first. Ignored once that piece is gone or maxed. Not saved.
+var forge_choice: String = ""
+# Set by test_map.gd each frame while standing at the blacksmith, where X picks
+# the piece to forge instead of attacking.
+var attack_blocked: bool = false
 # Skin Crystal from auto-salvage (see salvage_amounts).
 var materials: int = 0
 # Bag slots bought at the blacksmith (see bag_grow_costs).
@@ -619,7 +626,7 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_pressed("attack") and _attack_total() - attack_time <= combo_window:
 			combo_queued = true
 		_update_attack(delta)
-	elif Input.is_action_pressed("attack"):
+	elif Input.is_action_pressed("attack") and not attack_blocked:
 		_start_attack(0)
 
 
@@ -1414,16 +1421,37 @@ func forge_max(kind: String) -> int:
 	return mini(armor_forge_max, forge_costs.size()) if kind == "armor" else forge_costs.size()
 
 
-# The worn piece the blacksmith forges next: the one with the lowest forge level
-# that isn't maxed (ties: weapon, armor, ring). "" when nothing worn can be forged.
+# True if this kind is worn and below its forge cap.
+func can_forge(kind: String) -> bool:
+	return not worn_item(kind).is_empty() and forge_level(kind) < forge_max(kind)
+
+
+# The worn piece the blacksmith forges next: forge_choice if it can still be
+# forged, else the one with the lowest forge level that isn't maxed (ties:
+# weapon, armor, ring). "" when nothing worn can be forged.
 func forge_target() -> String:
+	if forge_choice != "" and can_forge(forge_choice):
+		return forge_choice
 	var best := ""
 	for kind in ["weapon", "armor", "ring"]:
-		if worn_item(kind).is_empty() or forge_level(kind) >= forge_max(kind):
+		if not can_forge(kind):
 			continue
 		if best == "" or forge_level(kind) < forge_level(best):
 			best = kind
 	return best
+
+
+# Blacksmith X: picks the next forgeable piece after the current target
+# (weapon -> armor -> ring -> weapon). Returns the new target.
+func cycle_forge_choice() -> String:
+	var kinds := ["weapon", "armor", "ring"]
+	var start := kinds.find(forge_target())
+	for step in range(1, kinds.size() + 1):
+		var kind: String = kinds[(start + step) % kinds.size()]
+		if can_forge(kind):
+			forge_choice = kind
+			break
+	return forge_target()
 
 
 # The next forge level's cost in Skin Crystal, or -1 when nothing can be forged.

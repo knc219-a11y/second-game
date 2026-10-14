@@ -233,8 +233,9 @@ var hub_gates: Array = []
 # Town blacksmith (placeholder anvil, town only): standing within
 # blacksmith_radius and pressing `interact` (C) forges the worn piece with the
 # lowest level +1 for Skin Crystal (player.gd forge_next / forge_costs), or
-# once nothing can be forged, buys more bag slots (player.gd grow_bag). Its
-# label shows that piece and the cost.
+# once nothing can be forged, buys more bag slots (player.gd grow_bag). There
+# `attack` (X) picks another piece to forge instead of swinging
+# (player.gd cycle_forge_choice). Its label shows that piece and the cost.
 const BLACKSMITH_POSITION := Vector2(330, 260)
 @export var blacksmith_radius: float = 80.0
 var blacksmith: Node2D = null
@@ -379,8 +380,9 @@ func _build_blacksmith() -> void:
 	blacksmith.add_child(anvil)
 	blacksmith_label = Label.new()
 	blacksmith_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	blacksmith_label.position = Vector2(-150, -190)
-	blacksmith_label.size = Vector2(300, 50)
+	blacksmith_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	blacksmith_label.position = Vector2(-160, -212)
+	blacksmith_label.size = Vector2(320, 72)
 	blacksmith_label.add_theme_constant_override("outline_size", 6)
 	blacksmith_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
 	blacksmith.add_child(blacksmith_label)
@@ -405,6 +407,13 @@ func _update_blacksmith_label() -> void:
 	var near := _near_blacksmith()
 	if near and cost > 0:
 		line = "[C] " + line
+	# With two or more pieces to forge, list them and mark the picked one.
+	var picks: Array[String] = []
+	for k in ["weapon", "armor", "ring"]:
+		if player.can_forge(k):
+			picks.append("<%s>" % k.capitalize() if k == kind else k.capitalize())
+	if picks.size() >= 2:
+		line += "\n%s%s" % ["[X] " if near else "", " ".join(picks)]
 	blacksmith_label.text = "Blacksmith\n" + line
 	blacksmith_label.modulate = Color(1, 1, 1, 1) if near else Color(1, 1, 1, 0.6)
 
@@ -1152,6 +1161,7 @@ func _move_on(target: int, next_area: int = 1) -> void:
 		player.pet.position = player_start + Vector2(-player.pet.follow_offset.x, player.pet.follow_offset.y)
 	player.camera.reset_smoothing()
 	in_hub = false
+	player.attack_blocked = false
 	for gate in hub_gates:
 		gate.visible = false
 	if blacksmith != null:
@@ -1209,6 +1219,9 @@ func _physics_process(delta: float) -> void:
 		if moving_on:
 			return
 		if in_hub:
+			player.attack_blocked = _near_blacksmith()
+			if player.attack_blocked and Input.is_action_just_pressed("attack"):
+				player.cycle_forge_choice()
 			if _near_blacksmith() and Input.is_action_just_pressed("interact"):
 				player.forge_next()
 			_update_blacksmith_label()
