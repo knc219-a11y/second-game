@@ -111,6 +111,8 @@ var drop_luck: int = 0
 # what's worn goes into the bag instead of breaking down, so it can be worn or
 # salvaged by hand later. Only once bag_size items are in it do such drops
 # auto-salvage as above. Saved in SAVE_PATH [bag] items (older saves load empty).
+# A bag item can be locked (inventory L, toggle_bag_lock): salvage_from_bag and
+# salvage_worse_from_bag skip it. Saved as the item's "locked" (older saves: unlocked).
 @export var bag_size: int = 12
 # Once nothing worn can be forged, the blacksmith's C buys bag_grow_slots more
 # bag slots for bag_grow_costs[bag_grows] Skin Crystal, once per cost (12 -> 24).
@@ -1281,7 +1283,7 @@ func _bag_or_salvage(kind: String, tier: int, rarity: int, value: int) -> void:
 		salvage(rarity, "Bag full! ")
 		_flash_bag_full()
 		return
-	bag.append({"kind": kind, "tier": tier, "rarity": rarity, "value": value, "forge": 0})
+	bag.append({"kind": kind, "tier": tier, "rarity": rarity, "value": value, "forge": 0, "locked": false})
 	print("Bagged %s (%d/%d)" % [gear_text(kind, tier, rarity, value), bag.size(), bag_size])
 	_save_gear()
 	_spawn_salvage_popup("Bag: %s (%s)" % [gear_text(kind, tier, rarity, value), compare_text(kind, value)],
@@ -1337,6 +1339,8 @@ func wear_from_bag(index: int) -> void:
 	var old := worn_item(item.kind)
 	bag.remove_at(index)
 	if not old.is_empty():
+		# The worn piece takes the slot's lock, so a swap doesn't drop it.
+		old.locked = item.get("locked", false)
 		bag.insert(index, old)
 	# Empty the slot so the equip below always takes the item.
 	match item.kind:
@@ -1388,23 +1392,39 @@ func grow_bag() -> bool:
 	return true
 
 
+# Inventory L: locks bag item index against salvage, or unlocks it. Saved.
+func toggle_bag_lock(index: int) -> void:
+	if is_dead or index < 0 or index >= bag.size():
+		return
+	bag[index].locked = not bag[index].get("locked", false)
+	print("%s %s" % ["Locked" if bag[index].locked else "Unlocked",
+		gear_text(bag[index].kind, bag[index].tier, bag[index].rarity, bag[index].value)])
+	_save_gear()
+
+
 # Breaks bag item index down into Skin Crystal (a forged piece's levels are lost).
+# A locked item stays.
 func salvage_from_bag(index: int) -> void:
 	if is_dead or index < 0 or index >= bag.size():
 		return
 	var item: Dictionary = bag[index]
+	if item.get("locked", false):
+		_spawn_salvage_popup("Locked (L to unlock)", rarity_colors[0])
+		return
 	bag.remove_at(index)
 	print("Salvaged %s from the bag" % gear_text(item.kind, item.tier, item.rarity, item.value))
 	salvage(item.rarity)
 
 
 # Bag items no better than what's worn in their slot (their own forge counts);
-# items for an empty slot are kept. What salvage_worse_from_bag would break down.
+# items for an empty slot and locked items are kept. What salvage_worse_from_bag
+# would break down.
 func worse_bag_indices() -> Array[int]:
 	var found: Array[int] = []
 	for i in bag.size():
 		var item: Dictionary = bag[i]
-		if not worn_item(item.kind).is_empty() and gear_diff(item.kind, item.value + item.forge) <= 0:
+		if not item.get("locked", false) and not worn_item(item.kind).is_empty() \
+				and gear_diff(item.kind, item.value + item.forge) <= 0:
 			found.append(i)
 	return found
 
@@ -1608,7 +1628,8 @@ func _load_bag(items: Variant) -> void:
 			"tier": clampi(item.get("tier", 1), 1, weapon_names.size()),
 			"rarity": clampi(item.get("rarity", 0), 0, RARITY_NAMES.size() - 1),
 			"value": maxi(1, item.get("value", 1)),
-			"forge": clampi(item.get("forge", 0), 0, forge_max(item.kind))})
+			"forge": clampi(item.get("forge", 0), 0, forge_max(item.kind)),
+			"locked": item.get("locked", false) == true})
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.

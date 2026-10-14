@@ -5,7 +5,8 @@ extends CanvasLayer
 # count, then rows of bag slots (player.gd bag: drops no better than what's
 # worn). Left/Right pick a bag item, X wears it (the worn one goes into the bag)
 # and C salvages it into Skin Crystal; Space salvages every bag item no better
-# than what's worn (player.gd salvage_worse_from_bag). Up/Down switches the active pet among the
+# than what's worn (player.gd salvage_worse_from_bag). L locks the picked item so
+# neither salvage takes it (a gold "L" corner on its cell). Up/Down switches the active pet among the
 # kept ones (player.gd owned_pets). I or Esc closes it. Better drops still
 # auto-equip on pickup. Built in code; it keeps running while the tree is
 # paused (process_mode always in test_map.tscn).
@@ -24,10 +25,11 @@ const CRYSTAL_ICON := preload("res://art/stage1/drops/s1_drop_skin_crystal.png")
 @export var bag_row_cells: int = 12
 @export var bag_cell_color: Color = Color(0.2, 0.17, 0.15, 1)
 @export var cursor_color: Color = Color(1, 1, 1, 0.9)
+@export var lock_color: Color = Color(1, 0.82, 0.3, 1)
 
 # Slot name -> [icon TextureRect, placeholder ColorRect, Label].
 var rows: Dictionary = {}
-# One per bag slot: [icon TextureRect, placeholder ColorRect, rarity bar ColorRect].
+# One per bag slot: [icon TextureRect, placeholder ColorRect, rarity bar ColorRect, lock Label].
 var cells: Array = []
 var selected: int = 0
 var bag_heading: Label
@@ -108,13 +110,18 @@ func _ready() -> void:
 		bar.position = Vector2(0, bag_cell_size - 8)
 		bar.size = Vector2(bag_cell_size, 8)
 		cell.add_child(bar)
-		cells.append([icon, swatch, bar])
+		var lock := _make_label(14)
+		lock.text = "L"
+		lock.add_theme_color_override("font_color", lock_color)
+		lock.position = Vector2(bag_cell_size - 14, -4)
+		cell.add_child(lock)
+		cells.append([icon, swatch, bar, lock])
 	detail = _make_label(18)
 	detail.position = Vector2(28, cell_y + 2 * bag_cell_size + bag_cell_gap + 8)
 	detail.size = Vector2(944, 60)
 	panel.add_child(detail)
 	var hint := _make_label(16)
-	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   Space: salvage all worse   Up / Down: switch pet   I / Esc: close"
+	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   L: lock   Space: salvage all worse   Up / Down: switch pet   I / Esc: close"
 	hint.modulate = empty_color
 	hint.position = Vector2(0, 630)
 	hint.size = Vector2(1000, 48)
@@ -139,6 +146,9 @@ func _process(_delta: float) -> void:
 			refresh()
 		elif Input.is_action_just_pressed("interact") and selected < p.bag.size():
 			p.salvage_from_bag(selected)
+			refresh()
+		elif Input.is_action_just_pressed("lock") and selected < p.bag.size():
+			p.toggle_bag_lock(selected)
 			refresh()
 		elif Input.is_action_just_pressed("roll"):
 			p.salvage_worse_from_bag()
@@ -249,10 +259,12 @@ func _refresh_bag() -> void:
 			cell[1].visible = icon == null
 			cell[2].color = p.rarity_colors[item.rarity]
 			cell[2].visible = true
+			cell[3].visible = item.get("locked", false)
 		else:
 			cell[0].visible = false
 			cell[1].visible = false
 			cell[2].visible = false
+			cell[3].visible = false
 	var first: Control = cells[0][0].get_parent()
 	cursor.position = first.position + _cell_offset(selected) - Vector2(4, 4)
 	if selected >= p.bag.size():
@@ -269,7 +281,10 @@ func _refresh_bag() -> void:
 	else:
 		text += "   (worn: %s%s)" % [p.gear_text(worn.kind, worn.tier, worn.rarity, worn.value),
 			"  Forge +%d" % worn.forge if worn.forge > 0 else ""]
-	text += "\nX: wear   C: salvage for %d %s" % [p.salvage_amounts[item.rarity], p.material_name]
+	if item.get("locked", false):
+		text += "\nLocked   X: wear   L: unlock"
+	else:
+		text += "\nX: wear   C: salvage for %d %s   L: lock" % [p.salvage_amounts[item.rarity], p.material_name]
 	detail.text = text
 	detail.add_theme_color_override("font_color", p.rarity_colors[item.rarity])
 
