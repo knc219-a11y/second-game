@@ -22,6 +22,10 @@ var bonus: int = 0
 @export var open_fade_time: float = 0.6
 
 var is_open: bool = false
+# A gear chest's line above its name comparing what's inside to what's worn
+# (player.gd compare_text, as on a gear drop), refreshed every frame until it
+# opens, since the worn gear can change (the other chest of a pick-one-of-two).
+var compare_label: Label
 
 
 func _ready() -> void:
@@ -32,11 +36,29 @@ func _ready() -> void:
 		rarity = roll[0]
 		bonus = roll[1]
 		$ItemLabel.modulate = player.rarity_colors[rarity]
+		compare_label = $ItemLabel.duplicate()
+		compare_label.name = "CompareLabel"
+		compare_label.position.y -= 20
+		compare_label.add_theme_font_size_override("font_size", 14)
+		add_child(compare_label)
+		_update_compare(player)
 	$ItemLabel.text = item_name()
 	if special:
 		$Visual/Box.color = special_color
 		$Visual/Lid.color = special_color.lightened(0.3)
 		$ItemLabel.modulate = special_color
+
+
+func _update_compare(player: Node) -> void:
+	compare_label.text = player.compare_text(kind, bonus)
+	compare_label.modulate = player.compare_color(kind, bonus)
+
+
+func _process(_delta: float) -> void:
+	if compare_label != null and not is_open:
+		var player := get_tree().get_first_node_in_group("player")
+		if player != null:
+			_update_compare(player)
 
 
 func item_name() -> String:
@@ -83,6 +105,8 @@ func _on_area_entered(area: Area2D) -> void:
 	$Visual/Lid.rotation = -0.5
 	var tween := create_tween().set_parallel()
 	tween.tween_property($ItemLabel, "position:y", $ItemLabel.position.y - 30, open_fade_time)
+	if compare_label != null:
+		tween.tween_property(compare_label, "position:y", compare_label.position.y - 30, open_fade_time)
 	tween.tween_property(self, "modulate:a", 0.0, open_fade_time).set_delay(open_fade_time * 0.5)
 	tween.chain().tween_callback(queue_free)
 
