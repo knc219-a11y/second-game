@@ -6,7 +6,9 @@ extends CanvasLayer
 # worn). Left/Right pick a bag item, X wears it (the worn one goes into the bag)
 # and C salvages it into Skin Crystal; Space salvages every bag item no better
 # than what's worn (player.gd salvage_worse_from_bag). L locks the picked item so
-# neither salvage takes it (a gold "L" corner on its cell). Up/Down switches the active pet among the
+# neither salvage takes it (a gold "L" corner on its cell). What those actions
+# say (salvage amounts, "Locked") shows on a message line at the panel's top right
+# (player.gd routes its popups here while the inventory is open). Up/Down switches the active pet among the
 # kept ones (player.gd owned_pets). I or Esc closes it. Better drops still
 # auto-equip on pickup. Built in code; it keeps running while the tree is
 # paused (process_mode always in test_map.tscn).
@@ -26,6 +28,9 @@ const CRYSTAL_ICON := preload("res://art/stage1/drops/s1_drop_skin_crystal.png")
 @export var bag_cell_color: Color = Color(0.2, 0.17, 0.15, 1)
 @export var cursor_color: Color = Color(1, 1, 1, 0.9)
 @export var lock_color: Color = Color(1, 0.82, 0.3, 1)
+# The message line stays this long, then fades out over message_fade_time.
+@export var message_time: float = 1.6
+@export var message_fade_time: float = 0.4
 
 # Slot name -> [icon TextureRect, placeholder ColorRect, Label].
 var rows: Dictionary = {}
@@ -35,6 +40,8 @@ var selected: int = 0
 var bag_heading: Label
 var detail: Label
 var cursor: ColorRect
+var message: Label
+var message_tween: Tween
 
 @onready var map: Node = get_parent()
 
@@ -120,6 +127,13 @@ func _ready() -> void:
 	detail.position = Vector2(28, cell_y + 2 * bag_cell_size + bag_cell_gap + 8)
 	detail.size = Vector2(944, 60)
 	panel.add_child(detail)
+	# Top right of the panel, beside the title (the bag area below is full).
+	message = _make_label(20)
+	message.position = Vector2(572, 20)
+	message.size = Vector2(400, 30)
+	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	message.visible = false
+	panel.add_child(message)
 	var hint := _make_label(16)
 	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   L: lock   Space: salvage all worse   Up / Down: switch pet   I / Esc: close"
 	hint.modulate = empty_color
@@ -175,8 +189,23 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	message.visible = false
 	get_tree().paused = false
 	print("Inventory closed")
+
+
+# A popup from player.gd while the inventory is open (it runs while paused, so
+# the fade does too).
+func show_message(text: String, color: Color) -> void:
+	message.text = text
+	message.add_theme_color_override("font_color", color)
+	message.modulate.a = 1.0
+	message.visible = true
+	if message_tween != null:
+		message_tween.kill()
+	message_tween = message.create_tween()
+	message_tween.tween_property(message, "modulate:a", 0.0, message_fade_time).set_delay(message_time)
+	message_tween.tween_callback(message.hide)
 
 
 func refresh() -> void:
