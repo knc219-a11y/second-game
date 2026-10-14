@@ -77,6 +77,14 @@ extends CharacterBody2D
 # read and dodge) and hits for less.
 @export var counter_startup: float = 0.45
 @export var counter_damage: int = 5
+# Parried by the Player (player.gd try_parry): the swing or leap is cancelled,
+# it is pushed parry_push px away and stands dazed for stagger_duration s
+# (stagger_color tint): no moving or attacking, and hits on it don't set up a
+# counter. Its next swing waits stagger_attack_delay s more after that.
+@export var stagger_duration: float = 1.0
+@export var stagger_attack_delay: float = 0.3
+@export var parry_push: float = 20.0
+@export var stagger_color: Color = Color(0.55, 0.75, 1, 1)
 # Leap (Stage 1 camp leader only; off while leap_distance is 0): standing on the
 # Player's line leap_min..leap_range px away with the leap ready, it winds up
 # leap_startup s with the danger zone stretched over the whole jump, then jumps
@@ -187,6 +195,7 @@ var attack_landed: bool = false
 var counter_ready: bool = false
 var is_counter: bool = false
 var is_leaping: bool = false
+var stagger_left: float = 0.0
 var leap_cooldown_left: float = 0.0
 var warn_polygon: PackedVector2Array
 # Ranged variant: 1 = down, -1 = up while sidestepping round something, else 0.
@@ -228,6 +237,10 @@ func _physics_process(delta: float) -> void:
 		cooldown_left -= delta
 	if leap_cooldown_left > 0.0:
 		leap_cooldown_left -= delta
+	if stagger_left > 0.0:
+		stagger_left -= delta
+		if stagger_left <= 0.0 and flash_time_left <= 0.0:
+			_paint(_body_color())
 
 	# Priority: knockback > attack > chase.
 	if knockback_time_left > 0.0:
@@ -235,6 +248,8 @@ func _physics_process(delta: float) -> void:
 		knockback_time_left -= step
 		# move_and_collide so walls and other bodies stop the slide.
 		move_and_collide(Vector2(knockback_dir * knockback_push / knockback_duration * step, 0.0))
+	elif stagger_left > 0.0:
+		velocity = Vector2.ZERO
 	elif attack_phase != AttackPhase.NONE:
 		# Stands still for the whole attack so it never slides mid-swing.
 		velocity = Vector2.ZERO
@@ -565,6 +580,8 @@ func _set_attack_phase(phase: AttackPhase) -> void:
 
 
 func _body_color() -> Color:
+	if stagger_left > 0.0:
+		return stagger_color
 	if attack_phase != AttackPhase.STARTUP:
 		return base_color
 	return counter_color if is_counter else telegraph_color
@@ -579,6 +596,9 @@ func _apply_hit() -> void:
 	for area in hitbox.get_overlapping_areas():
 		var target := area.get_parent()
 		if target.has_method("take_damage"):
+			if target.has_method("try_parry") and target.try_parry(self):
+				parried(int(attack_pivot.scale.x))
+				return
 			# Push the Player the way the swing faces (left/right only).
 			target.take_damage(counter_damage if is_counter else attack_damage, int(attack_pivot.scale.x))
 			attack_landed = true
@@ -633,8 +653,21 @@ func take_damage(amount: int, direction: int = 0, knockback_scale: float = 1.0, 
 		knockback_dir = direction
 		knockback_time_left = knockback_duration
 		knockback_push = knockback_distance * knockback_scale
-		if not super_armor and not is_ranged:
+		if not super_armor and not is_ranged and stagger_left <= 0.0:
 			counter_ready = true
+
+
+# The Player parried this swing (dir = the way it was swinging).
+func parried(dir: int) -> void:
+	_end_attack()
+	counter_ready = false
+	stagger_left = stagger_duration
+	cooldown_left = maxf(cooldown_left, stagger_duration + stagger_attack_delay)
+	if knockback_duration > 0.0:
+		knockback_dir = -dir
+		knockback_time_left = knockback_duration
+		knockback_push = parry_push
+	_paint(_body_color())
 
 
 # A one-off Label in the world (not on the enemy, which may die from this hit).
