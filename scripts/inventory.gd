@@ -167,19 +167,19 @@ func refresh() -> void:
 		if p.weapon_forge > 0:
 			text += "  Forge +%d" % p.weapon_forge
 		text += "  (+%d damage)" % (p.weapon_bonus + p.weapon_forge)
-		var cost: int = p.forge_cost()
-		text += "   next forge: %s" % ("max" if cost < 0 else "%d crystal" % cost)
 		_set_row("weapon", text, p.rarity_colors[p.weapon_rarity],
 			CALLUS_BLADE_ICON if p.weapon_tier == 1 else null, p.weapon_arc_color[p.weapon_tier - 1])
 	else:
 		_set_row("weapon", "Weapon   none", empty_color, null, empty_color)
 	if p.has_armor:
-		_set_row("armor", "Armor    %s  (-%d damage taken)" % [p.armor_text(p.armor_rarity, p.armor_value), p.armor_value],
+		_set_row("armor", "Armor    %s%s  (-%d damage taken)" % [p.armor_text(p.armor_rarity, p.armor_value),
+			"  Forge +%d" % p.armor_forge if p.armor_forge > 0 else "", p.armor_value + p.armor_forge],
 			p.rarity_colors[p.armor_rarity], ARMOR_ICON, empty_color)
 	else:
 		_set_row("armor", "Armor    none", empty_color, null, empty_color)
 	if p.has_ring:
-		_set_row("ring", "Ring     %s  (%d roll graze damage)" % [p.ring_text(p.ring_rarity, p.ring_value), p.ring_value],
+		_set_row("ring", "Ring     %s%s  (%d roll graze damage)" % [p.ring_text(p.ring_rarity, p.ring_value),
+			"  Forge +%d" % p.ring_forge if p.ring_forge > 0 else "", p.ring_value + p.ring_forge],
 			p.rarity_colors[p.ring_rarity], NERVE_RING_ICON, empty_color)
 	else:
 		_set_row("ring", "Ring     none", empty_color, null, empty_color)

@@ -97,12 +97,16 @@ var drop_luck: int = 0
 @export var salvage_amounts: Array[int] = [1, 2, 4, 8]
 @export var salvage_popup_time: float = 0.9
 @export var salvage_popup_rise: float = 36.0
-# Town blacksmith (test_map.gd): forging the worn weapon costs forge_costs[level]
-# Skin Crystal for the next level (+1 damage per level on basic attack hits),
-# up to forge_costs.size() (+3). The level belongs to that weapon: a drop only
-# replaces it if its bonus beats bonus + forge, and the new weapon starts at 0.
-# Saved in SAVE_PATH [gear] weapon_forge (older saves load 0).
+# Town blacksmith (test_map.gd): forging a worn piece costs forge_costs[level]
+# Skin Crystal for its next level, up to forge_costs.size() (+3). Each level adds
+# 1 to that piece's value: weapon +1 basic-attack damage, armor 1 less damage
+# taken, ring +1 graze damage. Armor stops at armor_forge_max (+2) so it stays
+# small. One press forges the worn piece with the lowest level (ties: weapon,
+# armor, ring; see forge_target). The level belongs to that piece: a drop only
+# replaces it if its value beats value + forge, and the new piece starts at 0.
+# Saved in SAVE_PATH [gear] weapon_forge / armor_forge / ring_forge (older saves load 0).
 @export var forge_costs: Array[int] = [5, 10, 20]
+@export var armor_forge_max: int = 2
 # Bag (I opens it, inventory.gd): a weapon, armor or ring drop no better than
 # what's worn goes into the bag instead of breaking down, so it can be worn or
 # salvaged by hand later. Only once bag_size items are in it do such drops
@@ -304,6 +308,9 @@ var armor_rarity: int = 0
 var armor_value: int = 0
 var ring_rarity: int = 0
 var ring_value: int = 0
+# Blacksmith levels of the worn armor and ring (see forge_costs).
+var armor_forge: int = 0
+var ring_forge: int = 0
 # Skin Crystal from auto-salvage (see salvage_amounts).
 var materials: int = 0
 # Bag items, oldest first: {"kind": "weapon"/"armor"/"ring", "tier", "rarity", "value", "forge"}.
@@ -825,7 +832,7 @@ func _roll_graze() -> void:
 		# Spark between the two hurtbox centers, i.e. where they rub.
 		var enemy_center: Vector2 = hit.collider.get_node("CollisionShape2D").global_position
 		_spawn_graze_spark((hurt_shape.global_position + enemy_center) / 2.0)
-		target.take_damage(ring_value, 0, 1.0, 2)
+		target.take_damage(ring_value + ring_forge, 0, 1.0, 2)
 
 
 # One-off star burst in the world (not on the enemy, which may die from the graze).
@@ -1135,37 +1142,90 @@ func _update_weapon_label() -> void:
 	weapon_label.text = "Weapon: %s damage" % text
 
 
-# The next forge level's cost in Skin Crystal, or -1 when unarmed or maxed.
+# This kind's forge level (0 when nothing is worn there).
+func forge_level(kind: String) -> int:
+	match kind:
+		"armor":
+			return armor_forge
+		"ring":
+			return ring_forge
+	return weapon_forge
+
+
+# This kind's highest forge level.
+func forge_max(kind: String) -> int:
+	return mini(armor_forge_max, forge_costs.size()) if kind == "armor" else forge_costs.size()
+
+
+# The worn piece the blacksmith forges next: the one with the lowest forge level
+# that isn't maxed (ties: weapon, armor, ring). "" when nothing worn can be forged.
+func forge_target() -> String:
+	var best := ""
+	for kind in ["weapon", "armor", "ring"]:
+		if worn_item(kind).is_empty() or forge_level(kind) >= forge_max(kind):
+			continue
+		if best == "" or forge_level(kind) < forge_level(best):
+			best = kind
+	return best
+
+
+# The next forge level's cost in Skin Crystal, or -1 when nothing can be forged.
 func forge_cost() -> int:
-	if weapon_tier == 0 or weapon_forge >= forge_costs.size():
+	var kind := forge_target()
+	if kind == "":
 		return -1
-	return forge_costs[weapon_forge]
+	return forge_costs[forge_level(kind)]
 
 
-# Blacksmith: spends Skin Crystal for +1 forge on the worn weapon. Pops up the
+# Blacksmith: spends Skin Crystal for +1 forge on forge_target(). Pops up the
 # result above the Player either way; returns true if it forged.
-func forge_weapon() -> bool:
-	var cost := forge_cost()
+func forge_next() -> bool:
 	if is_dead:
 		return false
-	if weapon_tier == 0:
-		_spawn_salvage_popup("No weapon to forge", rarity_colors[0])
+	var kind := forge_target()
+	if not has_armor and not has_ring and weapon_tier == 0:
+		_spawn_salvage_popup("No gear to forge", rarity_colors[0])
 		return false
-	if cost < 0:
-		_spawn_salvage_popup("Forge maxed", rarity_colors[weapon_rarity])
+	if kind == "":
+		_spawn_salvage_popup("Forge maxed", rarity_colors[0])
 		return false
+	var cost := forge_cost()
 	if materials < cost:
 		_spawn_salvage_popup("Need %d %s" % [cost, material_name], Color(1, 0.4, 0.35, 1))
 		return false
 	materials -= cost
-	weapon_forge += 1
-	print("Forged %s to +%d for %d %s (now %d)" % [weapon_text(weapon_tier, weapon_rarity, weapon_bonus), weapon_forge, cost, material_name, materials])
+	var worn := worn_item(kind)
+	match kind:
+		"armor":
+			armor_forge += 1
+			_update_armor_label()
+		"ring":
+			ring_forge += 1
+			_update_ring_label()
+		_:
+			weapon_forge += 1
+			_update_weapon_label()
+	var level := forge_level(kind)
+	print("Forged %s to +%d for %d %s (now %d)" % [gear_text(kind, worn.tier, worn.rarity, worn.value), level, cost, material_name, materials])
 	_update_material_label()
-	_update_weapon_label()
 	_save_gear()
 	play_pickup_sound(0.8)
-	_spawn_salvage_popup("Forge +%d!" % weapon_forge, rarity_colors[weapon_rarity])
+	_spawn_salvage_popup("%s Forge +%d!" % [kind.capitalize(), level], rarity_colors[worn.rarity])
 	return true
+
+
+func _update_armor_label() -> void:
+	var text := armor_text(armor_rarity, armor_value)
+	if armor_forge > 0:
+		text += ", Forge +%d (-%d)" % [armor_forge, armor_value + armor_forge]
+	armor_label.text = "Armor: %s damage taken" % text
+
+
+func _update_ring_label() -> void:
+	var text := ring_text(ring_rarity, ring_value)
+	if ring_forge > 0:
+		text += ", Forge +%d (%d)" % [ring_forge, ring_value + ring_forge]
+	ring_label.text = "Ring: %s roll graze" % text
 
 
 # value < 0 means the plain base (a Common of armor_damage_reduction).
@@ -1175,15 +1235,16 @@ func equip_armor(rarity: int = 0, value: int = -1) -> void:
 	# A drop no better than the worn armor goes to the bag (or Skin Crystal).
 	if is_dead:
 		return
-	if has_armor and value <= armor_value:
-		print("Passed on %s (wearing -%d)" % [armor_text(rarity, value), armor_value])
+	if has_armor and value <= armor_value + armor_forge:
+		print("Passed on %s (wearing -%d)" % [armor_text(rarity, value), armor_value + armor_forge])
 		_bag_or_salvage("armor", 1, rarity, value)
 		return
 	has_armor = true
 	armor_rarity = rarity
 	armor_value = value
+	armor_forge = 0
 	print("Picked up %s" % armor_text(rarity, value))
-	armor_label.text = "Armor: %s damage taken" % armor_text(rarity, value)
+	_update_armor_label()
 	armor_label.add_theme_color_override("font_color", rarity_colors[rarity])
 	_update_set_label()
 	_save_gear()
@@ -1195,15 +1256,16 @@ func equip_ring(rarity: int = 0, value: int = -1) -> void:
 		value = ring_roll_damage
 	if is_dead:
 		return
-	if has_ring and value <= ring_value:
-		print("Passed on %s (wearing %d)" % [ring_text(rarity, value), ring_value])
+	if has_ring and value <= ring_value + ring_forge:
+		print("Passed on %s (wearing %d)" % [ring_text(rarity, value), ring_value + ring_forge])
 		_bag_or_salvage("ring", 1, rarity, value)
 		return
 	has_ring = true
 	ring_rarity = rarity
 	ring_value = value
+	ring_forge = 0
 	print("Picked up %s" % ring_text(rarity, value))
-	ring_label.text = "Ring: %s roll graze" % ring_text(rarity, value)
+	_update_ring_label()
 	ring_label.add_theme_color_override("font_color", rarity_colors[rarity])
 	_update_set_label()
 	_save_gear()
@@ -1226,9 +1288,9 @@ func _bag_or_salvage(kind: String, tier: int, rarity: int, value: int) -> void:
 func worn_item(kind: String) -> Dictionary:
 	match kind:
 		"armor":
-			return {"kind": kind, "tier": 1, "rarity": armor_rarity, "value": armor_value, "forge": 0} if has_armor else {}
+			return {"kind": kind, "tier": 1, "rarity": armor_rarity, "value": armor_value, "forge": armor_forge} if has_armor else {}
 		"ring":
-			return {"kind": kind, "tier": 1, "rarity": ring_rarity, "value": ring_value, "forge": 0} if has_ring else {}
+			return {"kind": kind, "tier": 1, "rarity": ring_rarity, "value": ring_value, "forge": ring_forge} if has_ring else {}
 	if weapon_tier == 0:
 		return {}
 	return {"kind": kind, "tier": weapon_tier, "rarity": weapon_rarity, "value": weapon_bonus, "forge": weapon_forge}
@@ -1263,7 +1325,7 @@ func compare_color(kind: String, value: int) -> Color:
 
 
 # Wears bag item index even if it's worse; whatever was worn takes its bag slot.
-# A weapon keeps its forge level both ways.
+# Each piece keeps its forge level both ways.
 func wear_from_bag(index: int) -> void:
 	if is_dead or index < 0 or index >= bag.size():
 		return
@@ -1277,9 +1339,15 @@ func wear_from_bag(index: int) -> void:
 		"armor":
 			has_armor = false
 			equip_armor(item.rarity, item.value)
+			armor_forge = item.forge
+			_update_armor_label()
+			_save_gear()
 		"ring":
 			has_ring = false
 			equip_ring(item.rarity, item.value)
+			ring_forge = item.forge
+			_update_ring_label()
+			_save_gear()
 		_:
 			weapon_tier = 0
 			weapon_forge = 0
@@ -1290,7 +1358,7 @@ func wear_from_bag(index: int) -> void:
 	play_pickup_sound()
 
 
-# Breaks bag item index down into Skin Crystal (a forged weapon's levels are lost).
+# Breaks bag item index down into Skin Crystal (a forged piece's levels are lost).
 func salvage_from_bag(index: int) -> void:
 	if is_dead or index < 0 or index >= bag.size():
 		return
@@ -1398,9 +1466,11 @@ func _save_gear() -> void:
 	cfg.set_value("gear", "armor", has_armor)
 	cfg.set_value("gear", "armor_rarity", armor_rarity)
 	cfg.set_value("gear", "armor_value", armor_value)
+	cfg.set_value("gear", "armor_forge", armor_forge)
 	cfg.set_value("gear", "ring", has_ring)
 	cfg.set_value("gear", "ring_rarity", ring_rarity)
 	cfg.set_value("gear", "ring_value", ring_value)
+	cfg.set_value("gear", "ring_forge", ring_forge)
 	cfg.set_value("gear", "pet_kind", pet_kind)
 	cfg.set_value("gear", "owned_pets", owned_pets)
 	cfg.set_value("materials", "skin_crystal", materials)
@@ -1430,10 +1500,19 @@ func _load_gear() -> void:
 		_save_gear()
 	# Armor and ring from before rarity load as Common with the base value.
 	var last := RARITY_NAMES.size() - 1
+	# Forge levels are read before the equips, which reset and save them.
+	var a_forge: int = clampi(cfg.get_value("gear", "armor_forge", 0), 0, forge_max("armor"))
+	var r_forge: int = clampi(cfg.get_value("gear", "ring_forge", 0), 0, forge_max("ring"))
 	if cfg.get_value("gear", "armor", false):
 		equip_armor(clampi(cfg.get_value("gear", "armor_rarity", 0), 0, last), cfg.get_value("gear", "armor_value", armor_damage_reduction))
+		armor_forge = a_forge
+		_update_armor_label()
 	if cfg.get_value("gear", "ring", false):
 		equip_ring(clampi(cfg.get_value("gear", "ring_rarity", 0), 0, last), cfg.get_value("gear", "ring_value", ring_roll_damage))
+		ring_forge = r_forge
+		_update_ring_label()
+	if a_forge > 0 or r_forge > 0:
+		_save_gear()
 	# Saves from before pet storage keep just the active pet.
 	var owned: Variant = cfg.get_value("gear", "owned_pets", [])
 	if owned is Array:
@@ -1459,7 +1538,7 @@ func _load_bag(items: Variant) -> void:
 			"tier": clampi(item.get("tier", 1), 1, weapon_names.size()),
 			"rarity": clampi(item.get("rarity", 0), 0, RARITY_NAMES.size() - 1),
 			"value": maxi(1, item.get("value", 1)),
-			"forge": clampi(item.get("forge", 0), 0, forge_costs.size())})
+			"forge": clampi(item.get("forge", 0), 0, forge_max(item.kind))})
 
 
 # Returns false at full HP (or dead) so the drop stays on the ground.
@@ -1549,7 +1628,7 @@ func take_damage(amount: int, direction: int = 0) -> void:
 	hits_taken += 1
 	if has_armor:
 		# Never below 1 so armor can't make a hit free.
-		amount = maxi(amount - armor_value, 1)
+		amount = maxi(amount - armor_value - armor_forge, 1)
 	hp = maxi(hp - amount, 0)
 	hp_label.text = str(hp)
 	_update_hp_bar()
