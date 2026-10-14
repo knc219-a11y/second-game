@@ -364,6 +364,12 @@ var hp_text: Label
 var skill_boxes: Array = []
 var hud_pet_swatch: ColorRect
 var hud_pet_name: Label
+# "Bag full" warning right of the HP bar while the bag holds bag_size items;
+# it flashes each time a passed-on drop auto-salvages because of it.
+const HUD_BAG_FULL_POS := Vector2(330, 12)
+@export var bag_full_color: Color = Color(1, 0.55, 0.2, 1)
+@export var bag_full_flash_time: float = 0.5
+var hud_bag_full: Label
 # Placeholder streak behind the Player while dashing (fades after).
 @onready var dash_trail: Polygon2D = $DashTrail
 # Placeholder ring for the set shockwave, grows and fades over shockwave_duration.
@@ -774,6 +780,11 @@ func _build_status_hud() -> void:
 	hud_pet_name.position = Vector2(HUD_PET_X + 28, HUD_ROW_Y + 3)
 	hud_pet_name.visible = false
 	hud.add_child(hud_pet_name)
+	hud_bag_full = _hud_label(20)
+	hud_bag_full.position = HUD_BAG_FULL_POS
+	hud_bag_full.add_theme_color_override("font_color", bag_full_color)
+	hud_bag_full.visible = false
+	hud.add_child(hud_bag_full)
 
 
 func _hud_label(font_size: int) -> Label:
@@ -1201,7 +1212,8 @@ func equip_ring(rarity: int = 0, value: int = -1) -> void:
 # A passed-on drop goes into the bag, or breaks down when the bag is full.
 func _bag_or_salvage(kind: String, tier: int, rarity: int, value: int) -> void:
 	if bag.size() >= bag_size:
-		salvage(rarity)
+		salvage(rarity, "Bag full! ")
+		_flash_bag_full()
 		return
 	bag.append({"kind": kind, "tier": tier, "rarity": rarity, "value": value, "forge": 0})
 	print("Bagged %s (%d/%d)" % [gear_text(kind, tier, rarity, value), bag.size(), bag_size])
@@ -1288,14 +1300,33 @@ func salvage_from_bag(index: int) -> void:
 	salvage(item.rarity)
 
 
-# Breaks a drop of this rarity down into Skin Crystal.
-func salvage(rarity: int) -> void:
+# Breaks a drop of this rarity down into Skin Crystal (popup_prefix leads the popup).
+func salvage(rarity: int, popup_prefix: String = "") -> void:
 	var amount := salvage_amounts[rarity]
 	materials += amount
 	print("Salvaged into %d %s (now %d)" % [amount, material_name, materials])
 	_update_material_label()
 	_save_gear()
-	_spawn_salvage_popup("+%d %s" % [amount, material_name], rarity_colors[rarity])
+	_spawn_salvage_popup("%s+%d %s" % [popup_prefix, amount, material_name], rarity_colors[rarity])
+
+
+func _update_bag_full() -> void:
+	if hud_bag_full == null:
+		return
+	hud_bag_full.visible = bag.size() >= bag_size
+	hud_bag_full.text = "Bag full %d/%d" % [bag.size(), bag_size]
+
+
+# Pops the warning big and white, then back, so an auto-salvage gets noticed.
+func _flash_bag_full() -> void:
+	_update_bag_full()
+	hud_bag_full.pivot_offset = hud_bag_full.size / 2
+	hud_bag_full.scale = Vector2(1.4, 1.4)
+	hud_bag_full.modulate = Color(2, 2, 2, 1)
+	var tween := hud_bag_full.create_tween()
+	tween.tween_property(hud_bag_full, "scale", Vector2.ONE, bag_full_flash_time) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(hud_bag_full, "modulate", Color(1, 1, 1, 1), bag_full_flash_time)
 
 
 func _update_material_label() -> void:
@@ -1608,6 +1639,8 @@ func _update_sprite(delta: float) -> void:
 func _process(delta: float) -> void:
 	if sprite:
 		_update_sprite(delta)
+	# The bag changes from pickups, the inventory and loading; checked every frame.
+	_update_bag_full()
 	# _physics_process is off after death, so the restart key is read here.
 	if is_dead and Input.is_action_just_pressed("restart"):
 		_restart()
