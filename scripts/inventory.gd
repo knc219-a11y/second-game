@@ -2,7 +2,7 @@ extends CanvasLayer
 
 # I opens the inventory over a paused game: the three worn gear slots (rarity
 # colored, with value and forge level), the pet, the set and the Skin Crystal
-# count, then a row of bag slots (player.gd bag: drops no better than what's
+# count, then rows of bag slots (player.gd bag: drops no better than what's
 # worn). Left/Right pick a bag item, X wears it (the worn one goes into the bag)
 # and C salvages it into Skin Crystal. Up/Down switches the active pet among the
 # kept ones (player.gd owned_pets). I or Esc closes it. Better drops still
@@ -17,8 +17,10 @@ const CRYSTAL_ICON := preload("res://art/stage1/drops/s1_drop_skin_crystal.png")
 
 @export var empty_color: Color = Color(0.55, 0.55, 0.55, 1)
 @export var icon_size: float = 40.0
-@export var bag_cell_size: float = 64.0
-@export var bag_cell_gap: float = 12.0
+@export var bag_cell_size: float = 56.0
+@export var bag_cell_gap: float = 10.0
+# Bag slots per row; slots bought at the blacksmith fill a second row.
+@export var bag_row_cells: int = 12
 @export var bag_cell_color: Color = Color(0.2, 0.17, 0.15, 1)
 @export var cursor_color: Color = Color(1, 1, 1, 0.9)
 
@@ -44,7 +46,7 @@ func _ready() -> void:
 	var panel := ColorRect.new()
 	panel.color = Color(0.1, 0.08, 0.07, 0.92)
 	panel.position = Vector2(140, 30)
-	panel.size = Vector2(1000, 660)
+	panel.size = Vector2(1000, 680)
 	add_child(panel)
 	var heading := _make_label(30)
 	heading.text = "Inventory"
@@ -71,7 +73,7 @@ func _ready() -> void:
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER if slot != "pet" else VERTICAL_ALIGNMENT_TOP
 		panel.add_child(label)
 		rows[slot] = [icon, swatch, label]
-		y += 52.0 if slot != "pet" else 88.0
+		y += 48.0 if slot != "pet" else 88.0
 	bag_heading = _make_label(20)
 	bag_heading.position = Vector2(28, y + 4)
 	panel.add_child(bag_heading)
@@ -81,10 +83,13 @@ func _ready() -> void:
 	cursor.size = Vector2(bag_cell_size + 8, bag_cell_size + 8)
 	panel.add_child(cursor)
 	# map.player is still unset here (the map's @onready runs after its children).
-	for i in map.get_node("World/Player").bag_size:
+	# A cell for every slot the bag can grow to; refresh hides the unbought ones.
+	var p: Node = map.get_node("World/Player")
+	var most: int = p.bag_size + (p.bag_grow_costs.size() - p.bag_grows) * p.bag_grow_slots
+	for i in most:
 		var cell := ColorRect.new()
 		cell.color = bag_cell_color
-		cell.position = Vector2(28 + i * (bag_cell_size + bag_cell_gap), cell_y)
+		cell.position = Vector2(28, cell_y) + _cell_offset(i)
 		cell.size = Vector2(bag_cell_size, bag_cell_size)
 		panel.add_child(cell)
 		var icon := TextureRect.new()
@@ -104,13 +109,13 @@ func _ready() -> void:
 		cell.add_child(bar)
 		cells.append([icon, swatch, bar])
 	detail = _make_label(18)
-	detail.position = Vector2(28, cell_y + bag_cell_size + 14)
+	detail.position = Vector2(28, cell_y + 2 * bag_cell_size + bag_cell_gap + 8)
 	detail.size = Vector2(944, 60)
 	panel.add_child(detail)
 	var hint := _make_label(16)
 	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   Up / Down: switch pet   I / Esc: close"
 	hint.modulate = empty_color
-	hint.position = Vector2(0, 606)
+	hint.position = Vector2(0, 630)
 	hint.size = Vector2(1000, 48)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(hint)
@@ -224,6 +229,7 @@ func _refresh_bag() -> void:
 	bag_heading.text = "Bag   %d / %d" % [p.bag.size(), p.bag_size]
 	for i in cells.size():
 		var cell: Array = cells[i]
+		cell[0].get_parent().visible = i < p.bag_size
 		if i < p.bag.size():
 			var item: Dictionary = p.bag[i]
 			var icon := _item_icon(item)
@@ -238,7 +244,7 @@ func _refresh_bag() -> void:
 			cell[1].visible = false
 			cell[2].visible = false
 	var first: Control = cells[0][0].get_parent()
-	cursor.position = first.position + Vector2(selected * (bag_cell_size + bag_cell_gap) - 4, -4)
+	cursor.position = first.position + _cell_offset(selected) - Vector2(4, 4)
 	if selected >= p.bag.size():
 		detail.text = "Empty slot" if p.bag.size() > 0 else "Bag is empty"
 		detail.add_theme_color_override("font_color", empty_color)
@@ -256,6 +262,11 @@ func _refresh_bag() -> void:
 	text += "\nX: wear   C: salvage for %d %s" % [p.salvage_amounts[item.rarity], p.material_name]
 	detail.text = text
 	detail.add_theme_color_override("font_color", p.rarity_colors[item.rarity])
+
+
+# Bag slot i's position from the first slot's (rows of bag_row_cells).
+func _cell_offset(i: int) -> Vector2:
+	return Vector2(i % bag_row_cells, i / bag_row_cells) * (bag_cell_size + bag_cell_gap)
 
 
 func _item_icon(item: Dictionary) -> Texture2D:
