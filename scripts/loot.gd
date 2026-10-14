@@ -33,6 +33,11 @@ const STAGE1_HEAL_ICON := preload("res://art/stage1/drops/s1_drop_regen_fiber.pn
 # Set once the drop is taken: queue_free waits for the frame's end, and
 # area_entered plus the ichor retry below can both fire in that frame.
 var picked: bool = false
+# "weapon", "armor" or "ring" for a gear drop ("" otherwise), and the line above
+# its name comparing it to what's worn (refreshed every frame, since the worn
+# gear can change while it lies there).
+var gear_kind: String = ""
+var compare_label: Label
 
 
 func _ready() -> void:
@@ -41,6 +46,7 @@ func _ready() -> void:
 	$NameLabel.visible = false
 	var player := get_tree().get_first_node_in_group("player")
 	var gear := "weapon" if is_weapon else ("armor" if is_armor else ("ring" if is_ring else ""))
+	gear_kind = gear
 	if gear != "" and player != null:
 		if rarity < 0:
 			var roll: Array = player.roll_gear(gear, tier)
@@ -52,6 +58,12 @@ func _ready() -> void:
 		$NameLabel.text = player.gear_text(gear, tier, rarity, bonus)
 		$NameLabel.modulate = color
 		$NameLabel.visible = true
+		compare_label = $NameLabel.duplicate()
+		compare_label.name = "CompareLabel"
+		compare_label.position.y -= 20
+		compare_label.add_theme_font_size_override("font_size", 14)
+		add_child(compare_label)
+		_update_compare(player)
 	$Visual/Sword.visible = is_weapon
 	$Visual/Hilt.visible = is_weapon
 	$Visual/Armor.visible = is_armor
@@ -88,6 +100,18 @@ func _in_stage_one() -> bool:
 	return map != null and map.has_method("is_stage_one") and map.is_stage_one()
 
 
+func _update_compare(player: Node) -> void:
+	compare_label.text = player.compare_text(gear_kind, bonus)
+	compare_label.modulate = player.compare_color(gear_kind, bonus)
+
+
+func _process(_delta: float) -> void:
+	if compare_label != null:
+		var player := get_tree().get_first_node_in_group("player")
+		if player != null:
+			_update_compare(player)
+
+
 func _physics_process(_delta: float) -> void:
 	# An ichor drop left at full HP: the Player standing on it gets no new
 	# area_entered, so retry while overlapping (it heals once hurt).
@@ -105,12 +129,20 @@ func _on_area_entered(area: Area2D) -> void:
 			return
 	elif is_pet:
 		target.equip_pet(tier)
-	elif is_armor:
-		target.equip_armor(maxi(rarity, 0), bonus)
-	elif is_ring:
-		target.equip_ring(maxi(rarity, 0), bonus)
 	else:
-		target.equip_weapon(tier, maxi(rarity, 0), bonus)
+		# A drop that beats the worn one says by how much as it's put on (a
+		# worse one gets its comparison in the bag popup, player.gd).
+		var better: bool = target.gear_diff(gear_kind, bonus) > 0
+		var popup := "%s (%s)" % [target.gear_text(gear_kind, tier, maxi(rarity, 0), bonus),
+			target.compare_text(gear_kind, bonus)]
+		if is_armor:
+			target.equip_armor(maxi(rarity, 0), bonus)
+		elif is_ring:
+			target.equip_ring(maxi(rarity, 0), bonus)
+		else:
+			target.equip_weapon(tier, maxi(rarity, 0), bonus)
+		if better and not target.is_dead:
+			target._spawn_salvage_popup(popup, target.compare_better_color)
 	picked = true
 	target.play_pickup_sound(1.25 if is_heal else 1.0)
 	queue_free()
