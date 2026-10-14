@@ -231,8 +231,9 @@ const DUNGEON_GATE_COLOR := Color(1, 0.35, 0.3, 0.8)
 var in_hub: bool = false
 var hub_gates: Array = []
 # Town blacksmith (placeholder anvil, town only): standing within
-# blacksmith_radius and pressing `interact` (C) forges the worn weapon +1 for
-# Skin Crystal (player.gd forge_weapon / forge_costs). Its label shows the next cost.
+# blacksmith_radius and pressing `interact` (C) forges the worn piece with the
+# lowest level +1 for Skin Crystal (player.gd forge_next / forge_costs). Its
+# label shows that piece and the cost.
 const BLACKSMITH_POSITION := Vector2(330, 260)
 @export var blacksmith_radius: float = 80.0
 var blacksmith: Node2D = null
@@ -392,11 +393,12 @@ func _near_blacksmith() -> bool:
 
 func _update_blacksmith_label() -> void:
 	var cost: int = player.forge_cost()
-	var line := "Forge +%d: %d %s" % [player.weapon_forge + 1, cost, player.material_name]
-	if player.weapon_tier == 0:
-		line = "Bring a weapon to forge"
+	var kind: String = player.forge_target()
+	var line := "Forge %s +%d: %d %s" % [kind.capitalize(), player.forge_level(kind) + 1, cost, player.material_name]
+	if player.weapon_tier == 0 and not player.has_armor and not player.has_ring:
+		line = "Bring gear to forge"
 	elif cost < 0:
-		line = "Forge maxed (+%d)" % player.weapon_forge
+		line = "Forge maxed"
 	var near := _near_blacksmith()
 	if near and cost > 0:
 		line = "[C] " + line
@@ -1205,7 +1207,7 @@ func _physics_process(delta: float) -> void:
 			return
 		if in_hub:
 			if _near_blacksmith() and Input.is_action_just_pressed("interact"):
-				player.forge_weapon()
+				player.forge_next()
 			_update_blacksmith_label()
 			for i in hub_gates.size():
 				if i + 1 <= unlocked and player.position.distance_to(hub_gates[i].position) <= exit_radius:
