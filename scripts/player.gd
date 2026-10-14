@@ -295,6 +295,13 @@ var drop_luck: int = 0
 @export var parry_color: Color = Color(0.6, 0.85, 1, 1)
 @export var parry_whiff_color: Color = Color(0.6, 0.6, 0.6, 1)
 @export var shake_parry: float = 5.0
+# Parry slow-mo: for parry_slow_time real seconds after a parry, enemies and
+# their shots run at parry_slow_scale speed (enemy.gd/projectile.gd ask
+# enemy_time_scale()) while the Player keeps full speed, so a combo gets more
+# hits in. A faint blue screen tint shows it.
+@export var parry_slow_scale: float = 0.35
+@export var parry_slow_time: float = 1.0
+@export var parry_slow_tint: Color = Color(0.45, 0.65, 1, 0.12)
 # A roll passes through enemy bodies (physics layer "enemy_body"); walls still
 # block it. Both ways are turned off: the Player ignores enemies, and its body
 # leaves "world" so chasing enemies don't get shoved ahead of the roll. If the
@@ -396,6 +403,8 @@ var parry_time_left: float = 0.0
 var parry_cooldown_left: float = 0.0
 var parry_bar: Polygon2D
 var parries: int = 0
+var parry_slow_left: float = 0.0
+var parry_slow_rect: ColorRect
 
 @onready var visual: Node2D = $Visual
 @onready var camera: Camera2D = $Camera2D
@@ -576,6 +585,11 @@ func _physics_process(delta: float) -> void:
 
 	if parry_cooldown_left > 0.0:
 		parry_cooldown_left -= delta
+
+	if parry_slow_left > 0.0:
+		parry_slow_left -= delta
+		if parry_slow_left <= 0.0:
+			parry_slow_rect.visible = false
 
 	if shake_left > 0.0:
 		_update_shake(delta)
@@ -883,6 +897,13 @@ func _build_parry_bar() -> void:
 	parry_bar.color = parry_color
 	parry_bar.visible = false
 	visual.add_child(parry_bar)
+	parry_slow_rect = ColorRect.new()
+	parry_slow_rect.name = "ParrySlowTint"
+	parry_slow_rect.color = parry_slow_tint
+	parry_slow_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	parry_slow_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parry_slow_rect.visible = false
+	$Hud.add_child(parry_slow_rect)
 
 
 func _start_parry() -> void:
@@ -913,6 +934,11 @@ func _end_parry() -> void:
 		parry_bar.visible = false
 
 
+# Speed (0..1) enemies and their shots run at: slowed right after a parry.
+func enemy_time_scale() -> float:
+	return parry_slow_scale if parry_slow_left > 0.0 else 1.0
+
+
 func is_parrying() -> bool:
 	return parry_time_left > parry_recovery
 
@@ -936,6 +962,8 @@ func try_parry(attacker: Node2D) -> bool:
 	_spawn_salvage_popup("PARRY!", parry_color)
 	_shake(shake_parry)
 	_start_hitstop(parry_hitstop)
+	parry_slow_left = parry_slow_time
+	parry_slow_rect.visible = true
 	return true
 
 
@@ -2141,6 +2169,8 @@ func _die() -> void:
 	_end_whirl()
 	_end_hook()
 	_end_parry()
+	parry_slow_left = 0.0
+	parry_slow_rect.visible = false
 	hurt_knockback_left = 0.0
 	shockwave_time_left = 0.0
 	shockwave_ring.visible = false
