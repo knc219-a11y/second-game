@@ -4,7 +4,8 @@ extends CanvasLayer
 # colored, with value and forge level), the pet, the set and the Skin Crystal
 # count, then rows of bag slots (player.gd bag: drops no better than what's
 # worn). Left/Right pick a bag item, X wears it (the worn one goes into the bag)
-# and C salvages it into Skin Crystal. Up/Down switches the active pet among the
+# and C salvages it into Skin Crystal; Space salvages every bag item no better
+# than what's worn (player.gd salvage_worse_from_bag). Up/Down switches the active pet among the
 # kept ones (player.gd owned_pets). I or Esc closes it. Better drops still
 # auto-equip on pickup. Built in code; it keeps running while the tree is
 # paused (process_mode always in test_map.tscn).
@@ -113,7 +114,7 @@ func _ready() -> void:
 	detail.size = Vector2(944, 60)
 	panel.add_child(detail)
 	var hint := _make_label(16)
-	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   Up / Down: switch pet   I / Esc: close"
+	hint.text = "Worse drops go to the bag; a full bag breaks them into Skin Crystal.\nLeft / Right: pick   X: wear   C: salvage   Space: salvage all worse   Up / Down: switch pet   I / Esc: close"
 	hint.modulate = empty_color
 	hint.position = Vector2(0, 630)
 	hint.size = Vector2(1000, 48)
@@ -138,6 +139,9 @@ func _process(_delta: float) -> void:
 			refresh()
 		elif Input.is_action_just_pressed("interact") and selected < p.bag.size():
 			p.salvage_from_bag(selected)
+			refresh()
+		elif Input.is_action_just_pressed("roll"):
+			p.salvage_worse_from_bag()
 			refresh()
 		elif Input.is_action_just_pressed("move_up"):
 			_switch_pet(-1)
@@ -227,6 +231,12 @@ func _switch_pet(step: int) -> void:
 func _refresh_bag() -> void:
 	var p: Node = map.player
 	bag_heading.text = "Bag   %d / %d" % [p.bag.size(), p.bag_size]
+	var worse: Array[int] = p.worse_bag_indices()
+	if not worse.is_empty():
+		var amount := 0
+		for i in worse:
+			amount += p.salvage_amounts[p.bag[i].rarity]
+		bag_heading.text += "      Space: salvage %d worse (+%d %s)" % [worse.size(), amount, p.material_name]
 	for i in cells.size():
 		var cell: Array = cells[i]
 		cell[0].get_parent().visible = i < p.bag_size
