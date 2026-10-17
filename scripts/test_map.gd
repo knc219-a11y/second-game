@@ -92,6 +92,20 @@ const STAGE_FLOOR_COLORS := [Color(0.4, 0.3, 0.29, 1), Color(0.2, 0.19, 0.18, 1)
 # source art yet): 2 porous grey bone with half-buried ribs, 3 raw wet flesh
 # with veins and clotted pools. Stage 1 has its tiles instead (null here).
 const STAGE_FLOOR_TEXTURES := [null, preload("res://art/stage2/tiles/s2_floor.png"), preload("res://art/stage3/tiles/s3_floor.png")]
+# Stages 2 and 3 dress their rock boxes with painted heaps instead (2 bone
+# heaps, 3 flesh mounds; 128x96, origin at the bottom centre; made by
+# godot-arpg-design/s23-rock-check/make_props.py, no source art yet).
+# Collisions stay the boxes. A wall gets a row of heaps along its bottom edge,
+# a tall box a stack of them; each heap sorts on its own foot.
+const STAGE_HEAPS := [
+	[],
+	[preload("res://art/stage2/props/s2_bone_heap_0.png"), preload("res://art/stage2/props/s2_bone_heap_1.png"), preload("res://art/stage2/props/s2_bone_heap_2.png")],
+	[preload("res://art/stage3/props/s3_flesh_mound_0.png"), preload("res://art/stage3/props/s3_flesh_mound_1.png"), preload("res://art/stage3/props/s3_flesh_mound_2.png")],
+]
+const HEAP_OFFSET := Vector2(-64, -90)
+# Heaps along a wall every ~HEAP_STEP px, up a tall box every ~HEAP_STACK px.
+const HEAP_STEP := 70.0
+const HEAP_STACK := 45.0
 # Stage 1 rocks wear painted props instead of the flat boxes. Both PNGs have
 # their origin at the bottom centre (offset below); collisions stay the boxes.
 # Stage 1 normal enemy (Husk Crawler): 4 frames of 80x64, origin at the feet
@@ -482,6 +496,8 @@ func _spawn_stage() -> void:
 		elif AREA_CACHES.has(area):
 			_spawn_hidden_cache(AREA_CACHES[area][0], AREA_CACHES[area][1])
 	var floor_i := (stage - 1) % STAGE_FLOOR_COLORS.size()
+	if not STAGE_HEAPS[floor_i].is_empty():
+		_dress_heaps(STAGE_HEAPS[floor_i])
 	_set_floor(STAGE_FLOOR_COLORS[floor_i], STAGE_FLOOR_TEXTURES[floor_i])
 	_show_ground(stage == 1)
 	var packs := {}
@@ -793,6 +809,39 @@ func _dress_rocks() -> void:
 			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom + Vector2(size.x / 4, 0), 0.85))
 		else:
 			fade_sprites.append(_add_rock_sprite(rock, ROCK_PILE_TEX, ROCK_PILE_OFFSET, bottom, minf(1.0, size.x / 96.0)))
+
+
+# Stages 2-3: hides each rock's box and lines it with heaps (STAGE_HEAPS),
+# each on its own anchor at its foot so the Player sorts and fades against
+# that heap, not the middle of a long wall.
+func _dress_heaps(heaps: Array) -> void:
+	var n := 0
+	for rock in obstacles.get_children():
+		if not rock.name.begins_with("Rock"):
+			continue
+		var size: Vector2 = ((rock.get_node("CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D).size
+		(rock.get_node("Visual") as Polygon2D).visible = false
+		rock.y_sort_enabled = true
+		var feet: Array[Vector2] = []
+		var width := size.x
+		if size.y > size.x * 1.5:
+			var count := ceili(size.y / HEAP_STACK)
+			for i in count:
+				feet.append(Vector2(0, -size.y / 2 + size.y * (i + 1) / count))
+		else:
+			var count := ceili(size.x / HEAP_STEP)
+			width = size.x / count
+			for i in count:
+				feet.append(Vector2(-size.x / 2 + width * (i + 0.5), size.y / 2))
+		var s := clampf(width * 1.6 / 128.0, 0.6, 1.0)
+		for foot in feet:
+			var anchor := Node2D.new()
+			anchor.position = foot
+			rock.add_child(anchor)
+			var sprite := _add_rock_sprite(anchor, heaps[n % heaps.size()], HEAP_OFFSET, Vector2.ZERO, s)
+			sprite.flip_h = n % 2 == 1
+			fade_sprites.append(sprite)
+			n += 1
 
 
 # Named Rock* so the next _build_rocks clears it with the rocks.
