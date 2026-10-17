@@ -267,6 +267,14 @@ var area: int = 1
 # unlocked = STAGES.size() + 1 opens the dungeon gate.
 const HUB_GATES := [Vector2(600, 540), Vector2(850, 540), Vector2(1100, 540), Vector2(1350, 540)]
 const HUB_FLOOR_COLOR := Color(0.33, 0.3, 0.25, 1)
+# Town art (godot-arpg-design/town-art-check/make_town.py, placeholder):
+# stitched tanned-hide floor, an iron anvil on a bone block (origin bottom
+# centre 48,80). The town sits on the Stage 1 plateau, so it shows the
+# Stage 1 edge. Gates (town and stage exits) are small bone arches round an
+# oval glow (_dress_gate).
+const HIDE_FLOOR_TEX := preload("res://art/town/hide_floor.png")
+const ANVIL_TEX := preload("res://art/town/anvil.png")
+const GATE_ARCH_SCALE := 0.55
 # Stage 1 floor is painted with s1_ground.png tiles (atlas row 0: 4 base, 2
 # cracked, 2 red vein). Fixed seed so the floor looks the same every visit;
 # stages 2-3 have a painted floor texture (STAGE_FLOOR_TEXTURES); town and
@@ -420,6 +428,7 @@ func _ready() -> void:
 	_build_backdrop()
 	_build_boss_bar()
 	exit_gate.visible = false
+	_dress_gate(exit_gate)
 	if not endless_mode:
 		# The scene's placed enemies are only for endless mode; stages bring their own.
 		for e in enemies.get_children():
@@ -434,6 +443,32 @@ func _ready() -> void:
 			print("Intro")
 	enemies.child_exiting_tree.connect(_on_enemy_exiting)
 	_update_kill_label()
+
+
+# The exit gate (and so every town gate copied from it): the glow and door
+# become ovals and a small bone arch (BONE_ARCH_TEX) frames them.
+func _dress_gate(gate: Node2D) -> void:
+	var glow := gate.get_node("Glow") as Polygon2D
+	var door := gate.get_node("Door") as Polygon2D
+	glow.polygon = _oval(Vector2(0, -22), Vector2(36, 54))
+	door.polygon = _oval(Vector2(0, -20), Vector2(22, 42))
+	var arch := Sprite2D.new()
+	arch.name = "Arch"
+	arch.texture = BONE_ARCH_TEX
+	arch.centered = false
+	arch.offset = Vector2(-160, -260)
+	arch.position = Vector2(0, 30)
+	arch.scale = Vector2(GATE_ARCH_SCALE, GATE_ARCH_SCALE)
+	gate.add_child(arch)
+	gate.move_child(arch, door.get_index() + 1)
+
+
+func _oval(center: Vector2, radius: Vector2) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in 24:
+		var a := TAU * i / 24.0
+		pts.append(center + Vector2(cos(a) * radius.x, sin(a) * radius.y))
+	return pts
 
 
 # The town gates are copies of the exit gate, kept under the World in draw order.
@@ -451,7 +486,7 @@ func _build_hub_gates() -> void:
 		hub_gates.append(gate)
 
 
-# Placeholder anvil with a forge glow behind it, in the y-sorted World.
+# Anvil (ANVIL_TEX) with a forge glow behind it, in the y-sorted World.
 func _build_blacksmith() -> void:
 	blacksmith = Node2D.new()
 	blacksmith.name = "Blacksmith"
@@ -460,9 +495,11 @@ func _build_blacksmith() -> void:
 	glow.color = Color(1, 0.45, 0.1, 0.35)
 	glow.polygon = PackedVector2Array([Vector2(-46, -10), Vector2(-30, -62), Vector2(0, -76), Vector2(30, -62), Vector2(46, -10)])
 	blacksmith.add_child(glow)
-	var anvil := Polygon2D.new()
-	anvil.color = Color(0.48, 0.48, 0.54, 1)
-	anvil.polygon = PackedVector2Array([Vector2(-34, -40), Vector2(30, -40), Vector2(40, -30), Vector2(12, -26), Vector2(12, -14), Vector2(22, 0), Vector2(-22, 0), Vector2(-12, -14), Vector2(-12, -26), Vector2(-34, -30)])
+	var anvil := Sprite2D.new()
+	anvil.name = "Anvil"
+	anvil.texture = ANVIL_TEX
+	anvil.centered = false
+	anvil.offset = Vector2(-48, -80)
 	blacksmith.add_child(anvil)
 	blacksmith_label = Label.new()
 	blacksmith_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -513,9 +550,9 @@ func _enter_hub() -> void:
 	stage_cleared = false
 	exit_gate.visible = false
 	_build_rocks([])
-	_set_floor(HUB_FLOOR_COLOR)
+	_set_floor(HUB_FLOOR_COLOR, HIDE_FLOOR_TEX)
 	_show_ground(false)
-	_show_backdrop(0)
+	_show_backdrop(1)
 	var cfg := ConfigFile.new()
 	cfg.load(player.SAVE_PATH)
 	unlocked = cfg.get_value("progress", "unlocked", 1)
