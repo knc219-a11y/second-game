@@ -214,12 +214,29 @@ const BACKDROP_FACE_SHADE := Color(0.78, 0.7, 0.69)
 const BACKDROP_FACE_DEPTH := Vector2(70, 150)
 # Fog over the gorge starts this far past the walls (so the face shows first).
 const BACKDROP_FOG_START := 40.0
-# Stage 1 camera stops this far past the walls (it showed up to 640px of
+# Stage 1-3 camera stops this far past the walls (it showed up to 640px of
 # outside before): the backdrop frames the plateau instead of filling half the screen.
 const STAGE1_CAMERA_LIMITS := Rect2(-200, -300, 2000, 1400)
+# Stages 2 and 3 get the same broken edge and fog (no painted far shapes):
+# their own haze, a cliff face gradient-mapped from the Stage 1 one
+# (godot-arpg-design/s23-edge-check/make_faces.py, placeholder) and a rim cut
+# from their floor texture. The top edge there is a face rising away into
+# the haze instead of the Stage 1 cliff paintings.
+const STAGE_EDGE_LOOKS := [
+	{},
+	{"haze": [Color(0.5, 0.49, 0.46), Color(0.3, 0.29, 0.27), Color(0.11, 0.1, 0.1)], "face": preload("res://art/stage2/bg/s2_bg_cliff_face.png"), "rim_shade": Color(0.95, 0.95, 0.95), "face_shade": Color(0.9, 0.9, 0.9)},
+	{"haze": [Color(0.5, 0.26, 0.27), Color(0.3, 0.12, 0.14), Color(0.11, 0.03, 0.05)], "face": preload("res://art/stage3/bg/s3_bg_cliff_face.png"), "rim_shade": Color(0.95, 0.95, 0.95), "face_shade": Color(0.9, 0.9, 0.9)},
+]
 var backdrop_back: Node2D
 var backdrop_front: Node2D
 var lip_texture: ImageTexture
+# Per stage: [back, front] edge layers (Stage 1's are backdrop_back/front).
+var stage_edges := {}
+# What the edge builders below paint with; set per stage while building.
+var edge_haze: Array = BACKDROP_HAZE
+var edge_face: Texture2D = BG_FACE_TEX
+var edge_rim_shade := BACKDROP_RIM_SHADE
+var edge_face_shade := BACKDROP_FACE_SHADE
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
 # the edge spawn_points and the player_start, on a near-black floor with a red
@@ -493,6 +510,7 @@ func _enter_hub() -> void:
 	_build_rocks([])
 	_set_floor(HUB_FLOOR_COLOR)
 	_show_ground(false)
+	_show_backdrop(0)
 	var cfg := ConfigFile.new()
 	cfg.load(player.SAVE_PATH)
 	unlocked = cfg.get_value("progress", "unlocked", 1)
@@ -544,6 +562,7 @@ func _spawn_stage() -> void:
 		_dress_heaps(STAGE_HEAPS[floor_i])
 	_set_floor(STAGE_FLOOR_COLORS[floor_i], STAGE_FLOOR_TEXTURES[floor_i])
 	_show_ground(stage == 1)
+	_show_backdrop(stage)
 	var packs := {}
 	var entries: Array = STAGE1_AREAS[area - 1] if stage == 1 else STAGES[(stage - 1) % STAGES.size()]
 	for entry in entries:
@@ -612,7 +631,6 @@ func _set_floor(color: Color, tex: Texture2D = null) -> void:
 
 # Tiled floor on, grid off (or the other way round). Fills the layer once.
 func _show_ground(on: bool) -> void:
-	_show_backdrop(on)
 	ground.visible = on
 	grid.visible = not on and floor_poly.texture == null
 	if not on or ground.get_used_cells().size() > 0:
@@ -630,7 +648,7 @@ func _show_ground(on: bool) -> void:
 			ground.set_cell(Vector2i(x, y), 0, Vector2i(tile, 0))
 
 
-# Built once, hidden; _show_backdrop turns it on for Stage 1 only.
+# Built once, hidden; _show_backdrop turns on one stage's edge at a time.
 func _build_backdrop() -> void:
 	backdrop_back = Node2D.new()
 	backdrop_back.name = "BackdropBack"
@@ -670,16 +688,61 @@ func _build_backdrop() -> void:
 	backdrop_front.add_child(shade)
 	for piece in BACKDROP_FRONT:
 		backdrop_front.add_child(_backdrop_sprite(piece))
-	_show_backdrop(false)
+	stage_edges[1] = [backdrop_back, backdrop_front]
+	for st in [2, 3]:
+		_build_stage_edges(st)
+	_show_backdrop(0)
+
+
+# Stage 2/3 edge (see STAGE_EDGE_LOOKS): haze behind, then a broken edge on all
+# four sides with fog over the gorge. Built once, hidden.
+func _build_stage_edges(st: int) -> void:
+	var look: Dictionary = STAGE_EDGE_LOOKS[st - 1]
+	edge_haze = look["haze"]
+	edge_face = look["face"]
+	edge_rim_shade = look["rim_shade"]
+	edge_face_shade = look["face_shade"]
+	var back := Node2D.new()
+	back.name = "Edge%dBack" % st
+	add_child(back)
+	move_child(back, floor_poly.get_index())
+	var ys: Array = [-1600.0] + BACKDROP_HAZE_Y + [2400.0]
+	var cs: Array = [edge_haze[0]] + edge_haze + [edge_haze[2]]
+	for i in ys.size() - 1:
+		var haze := Polygon2D.new()
+		haze.polygon = PackedVector2Array([Vector2(-1600, ys[i]), Vector2(3200, ys[i]), Vector2(3200, ys[i + 1]), Vector2(-1600, ys[i + 1])])
+		haze.vertex_colors = PackedColorArray([cs[i], cs[i], cs[i + 1], cs[i + 1]])
+		back.add_child(haze)
+	var front := Node2D.new()
+	front.name = "Edge%dFront" % st
+	add_child(front)
+	move_child(front, grid.get_index() + 1)
+	var saved := backdrop_front
+	backdrop_front = front
+	var floor_tex: Texture2D = STAGE_FLOOR_TEXTURES[st - 1]
+	lip_texture = ImageTexture.create_from_image(floor_tex.get_image().get_region(Rect2i(0, 0, 256, 64)))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GROUND_SEED + st
+	_add_cliff_edge(Vector2(0, 0), Vector2(1, 0), Vector2(0, -1), 1600.0, 40.0, rng, true)
+	_add_cliff_edge(Vector2(0, 0), Vector2(0, 1), Vector2(-1, 0), 900.0, 40.0, rng)
+	_add_cliff_edge(Vector2(1600, 900), Vector2(0, -1), Vector2(1, 0), 900.0, 40.0, rng)
+	_add_cliff_edge(Vector2(1600, 900), Vector2(-1, 0), Vector2(0, 1), 1600.0, 170.0, rng)
+	_add_fog()
+	backdrop_front = saved
+	stage_edges[st] = [back, front]
+	edge_haze = BACKDROP_HAZE
+	edge_face = BG_FACE_TEX
+	edge_rim_shade = BACKDROP_RIM_SHADE
+	edge_face_shade = BACKDROP_FACE_SHADE
 
 
 func _haze_at(y: float) -> Color:
 	if y <= BACKDROP_HAZE_Y[0]:
-		return BACKDROP_HAZE[0]
+		return edge_haze[0]
 	for i in 2:
 		if y <= BACKDROP_HAZE_Y[i + 1]:
-			return BACKDROP_HAZE[i].lerp(BACKDROP_HAZE[i + 1], (y - BACKDROP_HAZE_Y[i]) / (BACKDROP_HAZE_Y[i + 1] - BACKDROP_HAZE_Y[i]))
-	return BACKDROP_HAZE[2]
+			return edge_haze[i].lerp(edge_haze[i + 1], (y - BACKDROP_HAZE_Y[i]) / (BACKDROP_HAZE_Y[i + 1] - BACKDROP_HAZE_Y[i]))
+	return edge_haze[2]
 
 
 # Fog over the gorge on the left, right and bottom: a ring with mitred
@@ -720,7 +783,8 @@ func _add_fog() -> void:
 # up to ~18px into the floor, then a cliff face (furrows, fibres and bone
 # spurs from s1_bg_cliff_face.png) of uneven height that darkens toward its
 # foot in the fog. Only the look is ragged: the straight walls still collide.
-func _add_cliff_edge(start: Vector2, along: Vector2, out: Vector2, length: float, extend: float, rng: RandomNumberGenerator) -> void:
+# fade_far: the face fades out at its far end (a top edge rising into haze).
+func _add_cliff_edge(start: Vector2, along: Vector2, out: Vector2, length: float, extend: float, rng: RandomNumberGenerator, fade_far: bool = false) -> void:
 	var waves := []
 	for k in 3:
 		waves.append([rng.randf_range(0.004, 0.02) * (k + 1), rng.randf_range(0, TAU)])
@@ -741,20 +805,22 @@ func _add_cliff_edge(start: Vector2, along: Vector2, out: Vector2, length: float
 		rim_v.append([top, rim, d])
 		face_v.append([rim, bottom, d])
 		d += rng.randf_range(14.0, 26.0)
-	var mid_shade := BACKDROP_FACE_SHADE
-	var top_shade := BACKDROP_FACE_SHADE.darkened(0.4)
+	var mid_shade := edge_face_shade
+	var top_shade := edge_face_shade.darkened(0.4)
 	# Solid to its ragged foot (a fade would show the floor tiles that run
 	# past y 900); the fog over it does the dissolving.
-	var low_shade := BACKDROP_FACE_SHADE.darkened(0.62)
-	var face_h := float(BG_FACE_TEX.get_height())
+	var low_shade := edge_face_shade.darkened(0.62)
+	if fade_far:
+		low_shade.a = 0.0
+	var face_h := float(edge_face.get_height())
 	var rim_mesh := []
 	var face_mesh := []
 	for row in rim_v:
 		# The rim stops at the floor's corners; the face runs on past them.
 		var past: float = maxf(-row[2], row[2] - length)
 		var fade := clampf(1.0 - past / 16.0, 0.0, 1.0)
-		var rim_top := BACKDROP_RIM_SHADE
-		var rim_low := BACKDROP_RIM_SHADE.darkened(0.25)
+		var rim_top := edge_rim_shade
+		var rim_low := edge_rim_shade.darkened(0.25)
 		rim_top.a = fade
 		rim_low.a = fade
 		rim_mesh.append([row[0], Vector2(row[2], 0), rim_top])
@@ -772,7 +838,7 @@ func _add_cliff_edge(start: Vector2, along: Vector2, out: Vector2, length: float
 		face_mesh.append([p0, Vector2(row[2], 0), shades[0]])
 		face_mesh.append([p0.lerp(p1, 0.25), Vector2(row[2], face_h * 0.25), shades[1]])
 		face_mesh.append([p1, Vector2(row[2], face_h), shades[2]])
-	_add_strip(face_mesh, 3, BG_FACE_TEX)
+	_add_strip(face_mesh, 3, edge_face)
 	_add_strip(rim_mesh, 2, lip_texture)
 
 
@@ -821,11 +887,14 @@ func _backdrop_sprite(piece: Array) -> Sprite2D:
 	return sprite
 
 
-# The plain wall strips show everywhere else; in Stage 1 the backdrop is the
-# edge and the camera stops short of the far outside.
-func _show_backdrop(on: bool) -> void:
-	backdrop_back.visible = on
-	backdrop_front.visible = on
+# The plain wall strips show in town and the dungeon; in stages 1-3 (`st`,
+# 0 = none) that stage's edge layers are the edge and the camera stops short
+# of the far outside.
+func _show_backdrop(st: int) -> void:
+	for k in stage_edges:
+		for layer in stage_edges[k]:
+			layer.visible = k == st
+	var on := stage_edges.has(st)
 	for wall in ["WallTop", "WallBottom", "WallLeft", "WallRight"]:
 		(obstacles.get_node(wall).get_node("Visual") as CanvasItem).visible = not on
 	var cam: Camera2D = player.camera
@@ -1368,6 +1437,7 @@ func _enter_dungeon() -> void:
 	_build_rocks(DUNGEON_ROCKS, DUNGEON_ROCK_COLOR)
 	_set_floor(DUNGEON_FLOOR_COLOR)
 	_show_ground(false)
+	_show_backdrop(0)
 	print("Dungeon")
 	_show_banner(DUNGEON_NAME)
 
