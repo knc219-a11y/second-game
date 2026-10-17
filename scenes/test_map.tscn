@@ -36,6 +36,7 @@ script = ExtResource("3")
 
 [node name="Floor" type="Polygon2D" parent="."]
 color = Color(0.18, 0.32, 0.2, 1)
+texture_repeat = 2
 polygon = PackedVector2Array(0, 0, 1600, 0, 1600, 900, 0, 900)
 
 [node name="Ground" type="TileMapLayer" parent="."]
