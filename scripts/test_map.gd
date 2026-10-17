@@ -224,8 +224,10 @@ const STAGE1_CAMERA_LIMITS := Rect2(-200, -300, 2000, 1400)
 # the haze instead of the Stage 1 cliff paintings.
 const STAGE_EDGE_LOOKS := [
 	{},
-	{"haze": [Color(0.5, 0.49, 0.46), Color(0.3, 0.29, 0.27), Color(0.11, 0.1, 0.1)], "face": preload("res://art/stage2/bg/s2_bg_cliff_face.png"), "rim_shade": Color(0.95, 0.95, 0.95), "face_shade": Color(0.9, 0.9, 0.9)},
-	{"haze": [Color(0.5, 0.26, 0.27), Color(0.3, 0.12, 0.14), Color(0.11, 0.03, 0.05)], "face": preload("res://art/stage3/bg/s3_bg_cliff_face.png"), "rim_shade": Color(0.95, 0.95, 0.95), "face_shade": Color(0.9, 0.9, 0.9)},
+	{"haze": [Color(0.5, 0.49, 0.46), Color(0.3, 0.29, 0.27), Color(0.11, 0.1, 0.1)], "floor": preload("res://art/stage2/tiles/s2_floor.png"), "face": preload("res://art/stage2/bg/s2_bg_cliff_face.png"), "rim_shade": Color(0.95, 0.95, 0.95), "face_shade": Color(0.9, 0.9, 0.9)},
+	{"haze": [Color(0.5, 0.26, 0.27), Color(0.3, 0.12, 0.14), Color(0.11, 0.03, 0.05)], "floor": preload("res://art/stage3/tiles/s3_floor.png"), "face": preload("res://art/stage3/bg/s3_bg_cliff_face.png"), "rim_shade": Color(0.95, 0.95, 0.95), "face_shade": Color(0.9, 0.9, 0.9)},
+	# The dungeon (key 4, its _move_on target): a darker wound, dim flesh face.
+	{"haze": [Color(0.3, 0.12, 0.13), Color(0.16, 0.05, 0.06), Color(0.05, 0.01, 0.02)], "floor": WOUND_FLOOR_TEX, "face": preload("res://art/stage3/bg/s3_bg_cliff_face.png"), "rim_shade": Color(0.8, 0.75, 0.75), "face_shade": Color(0.62, 0.55, 0.55)},
 ]
 var backdrop_back: Node2D
 var backdrop_front: Node2D
@@ -239,12 +241,15 @@ var edge_rim_shade := BACKDROP_RIM_SHADE
 var edge_face_shade := BACKDROP_FACE_SHADE
 const STAGE_ROCK_COLORS := [Color(0.6, 0.5, 0.34, 1), Color(0.52, 0.5, 0.44, 1), Color(0.45, 0.17, 0.2, 1)]
 # Special dungeon: an open arena with four pillars around the middle, away from
-# the edge spawn_points and the player_start, on a near-black floor with a red
-# tinge (an open wound; a bright red floor once hid the tough enemies, which
-# are now bone-colored).
+# the edge spawn_points and the player_start, on dark wound flesh
+# (WOUND_FLOOR_TEX; DUNGEON_FLOOR_COLOR and DUNGEON_ROCK_COLOR are only the
+# placeholder colours under the art).
 const DUNGEON_ROCKS := [[Vector2(550, 280), Vector2(70, 70)], [Vector2(1050, 280), Vector2(70, 70)], [Vector2(550, 620), Vector2(70, 70)], [Vector2(1050, 620), Vector2(70, 70)]]
 const DUNGEON_FLOOR_COLOR := Color(0.12, 0.08, 0.09, 1)
 const DUNGEON_ROCK_COLOR := Color(0.55, 0.12, 0.16, 1)
+# The dungeon wears a darker flesh floor (make_floor.py, placeholder), the
+# Stage 3 flesh mounds on its pillars and its own edge (STAGE_EDGE_LOOKS[3]).
+const WOUND_FLOOR_TEX := preload("res://art/dungeon/tiles/wound_floor.png")
 const LOOT_SCRIPT := preload("res://scripts/loot.gd")
 const CHEST_SCRIPT := preload("res://scripts/chest.gd")
 const SHOT_SCRIPT := preload("res://scripts/projectile.gd")
@@ -689,7 +694,7 @@ func _build_backdrop() -> void:
 	for piece in BACKDROP_FRONT:
 		backdrop_front.add_child(_backdrop_sprite(piece))
 	stage_edges[1] = [backdrop_back, backdrop_front]
-	for st in [2, 3]:
+	for st in [2, 3, 4]:
 		_build_stage_edges(st)
 	_show_backdrop(0)
 
@@ -719,7 +724,7 @@ func _build_stage_edges(st: int) -> void:
 	move_child(front, grid.get_index() + 1)
 	var saved := backdrop_front
 	backdrop_front = front
-	var floor_tex: Texture2D = STAGE_FLOOR_TEXTURES[st - 1]
+	var floor_tex: Texture2D = look["floor"]
 	lip_texture = ImageTexture.create_from_image(floor_tex.get_image().get_region(Rect2i(0, 0, 256, 64)))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GROUND_SEED + st
@@ -1435,9 +1440,10 @@ func _enter_dungeon() -> void:
 	kills = 0
 	respawn_left = respawn_delay
 	_build_rocks(DUNGEON_ROCKS, DUNGEON_ROCK_COLOR)
-	_set_floor(DUNGEON_FLOOR_COLOR)
+	_dress_heaps(STAGE_HEAPS[2])
+	_set_floor(DUNGEON_FLOOR_COLOR, WOUND_FLOOR_TEX)
 	_show_ground(false)
-	_show_backdrop(0)
+	_show_backdrop(STAGE_EDGE_LOOKS.size())
 	print("Dungeon")
 	_show_banner(DUNGEON_NAME)
 
