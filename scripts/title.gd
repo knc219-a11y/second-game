@@ -97,18 +97,21 @@ func _choose(choice: String) -> void:
 				selected = 0
 				_refresh()
 			else:
-				_start()
+				_start(true)
 		"Yes":
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 			print("Save erased")
-			_start()
+			_start(true)
 		"No":
 			confirming = false
 			selected = options.find("New Game")
 			_refresh()
 
 
-func _start() -> void:
+# A new game opens on the intro card in town (test_map.gd INTRO_TEXT).
+func _start(new_game: bool = false) -> void:
+	if new_game:
+		get_tree().root.set_meta("new_game_intro", true)
 	get_tree().change_scene_to_file(GAME_SCENE)
 
 
