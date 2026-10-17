@@ -55,6 +55,11 @@ const STAGE1_AREAS := [
 ]
 # The last area is the boss fight (see _make_boss).
 const STAGE1_AREA_NAMES := ["1-1", "1-2", "1-3", "1-BOSS"]
+# Stage 3 is the last stage: its field (STAGES entry), then the final boss
+# alone between the four pillars. Its kill clears the stage, so the ending
+# card (first clear) comes after it.
+const STAGE3_AREAS := [STAGES[2], [["boss", Vector2(800, 450)]]]
+const STAGE3_AREA_NAMES := ["3-1", "3-BOSS"]
 const TOWN_NAME := "Hidehold"
 const STAGE_NAMES := ["Husk Flats", "Rib Field", "Vein Hollow"]
 const DUNGEON_NAME := "The Wound"
@@ -606,7 +611,7 @@ func _spawn_stage() -> void:
 	_show_ground(stage == 1)
 	_show_backdrop(stage)
 	var packs := {}
-	var entries: Array = STAGE1_AREAS[area - 1] if stage == 1 else STAGES[(stage - 1) % STAGES.size()]
+	var entries: Array = _areas()[area - 1]
 	for entry in entries:
 		var enemy := enemy_scene.instantiate()
 		if entry.size() > 2:
@@ -1171,13 +1176,31 @@ func _stage_name() -> String:
 	return STAGE_NAMES[(stage - 1) % STAGE_NAMES.size()]
 
 
-# "1-2" inside Stage 1, else just the stage number.
+# "1-2" inside a stage played as areas, else just the stage number.
 func _stage_number() -> String:
-	return STAGE1_AREA_NAMES[area - 1] if stage == 1 else str(stage)
+	return _area_names()[area - 1] if _area_count() > 1 else str(stage)
+
+
+# Enemy lists of the current stage's areas, in play order (one for a stage
+# played in one go).
+func _areas() -> Array:
+	if stage == 1:
+		return STAGE1_AREAS
+	if stage == 3:
+		return STAGE3_AREAS
+	return [STAGES[(stage - 1) % STAGES.size()]]
+
+
+func _area_names() -> Array:
+	if stage == 1:
+		return STAGE1_AREA_NAMES
+	if stage == 3:
+		return STAGE3_AREA_NAMES
+	return [str(stage)]
 
 
 func _area_count() -> int:
-	return STAGE1_AREAS.size() if stage == 1 else 1
+	return _areas().size()
 
 
 func _show_banner(text: String, color: Color = Color(1, 1, 1, 1), hold: float = 1.2) -> void:
@@ -1245,7 +1268,7 @@ func _clear_stage() -> void:
 	exit_gate.position = exit_position
 	exit_gate.visible = true
 	if area < _area_count():
-		var next: String = STAGE1_AREA_NAMES[area]
+		var next: String = _area_names()[area]
 		print("Area %s clear" % _stage_number())
 		var banner := "%s Clear!" % _stage_number()
 		var before: int = player.hp
@@ -1257,8 +1280,9 @@ func _clear_stage() -> void:
 		return
 	exit_label.text = TOWN_NAME.to_upper()
 	var hits: int = player.hits_taken
-	var s_hits := stage1_grade_s_hits if stage == 1 else grade_s_hits
-	var a_hits := stage1_grade_a_hits if stage == 1 else grade_a_hits
+	# Stages with a boss use the looser Stage 1 thresholds.
+	var s_hits := stage1_grade_s_hits if _area_count() > 1 else grade_s_hits
+	var a_hits := stage1_grade_a_hits if _area_count() > 1 else grade_a_hits
 	var grade := "S" if hits <= s_hits else ("A" if hits <= a_hits else "B")
 	var best := _save_best_grade(grade)
 	var cfg := ConfigFile.new()
@@ -1597,12 +1621,30 @@ func _spawn_enemy() -> void:
 @export var boss_hp: int = 320
 @export var boss_damage: int = 15
 @export var boss_size_scale: float = 1.9
+# Stage 3 final boss: Clot Matron, the Husk Matron swollen with the god's
+# blood (her sprite tinted dark red until her own art). More HP, harder
+# hits, a quicker swing; she calls her brood three times, Vein Spitters
+# (ranged) instead of Husk Crawlers.
+@export var final_boss_name: String = "Clot Matron"
+@export var final_boss_hp: int = 480
+@export var final_boss_damage: int = 18
+@export var final_boss_cooldown: float = 1.2
+@export var final_boss_color: Color = Color(1, 0.45, 0.45, 1)
+@export var final_boss_brood_at: PackedFloat32Array = PackedFloat32Array([0.75, 0.5, 0.25])
+# Name of the boss alive now (bar label, brood banner).
+var current_boss_name: String = ""
 
 
 func _make_boss(enemy: Node) -> void:
+	var final := stage == 3
+	current_boss_name = final_boss_name if final else boss_name
+	boss_label.text = current_boss_name
 	enemy.name = "Boss"
-	enemy.max_hp = boss_hp
-	enemy.attack_damage = boss_damage
+	enemy.max_hp = final_boss_hp if final else boss_hp
+	enemy.attack_damage = final_boss_damage if final else boss_damage
+	if final:
+		enemy.sprite_color = final_boss_color
+		enemy.sprite_shard_color = Color(0.55, 0.1, 0.12, 1)
 	enemy.sprite_sheet = BOSS_TEX
 	enemy.sprite_frame_size = Vector2(248, 177)
 	enemy.sprite_origin = Vector2(98, 175)
@@ -1625,7 +1667,7 @@ func _make_boss(enemy: Node) -> void:
 	enemy.attack_range = 100.0
 	enemy.vertical_tolerance = 30.0
 	enemy.attack_startup = 0.5
-	enemy.attack_cooldown = 1.4
+	enemy.attack_cooldown = final_boss_cooldown if final else 1.4
 	enemy.leap_distance = 200.0
 	enemy.leap_min = 140.0
 	enemy.leap_range = 300.0
@@ -1640,6 +1682,7 @@ func _make_boss(enemy: Node) -> void:
 const BOSS_BAR_RECT := Rect2(340, 664, 600, 16)
 var boss_bar: Control
 var boss_fill: ColorRect
+var boss_label: Label
 
 
 func _build_boss_bar() -> void:
@@ -1657,13 +1700,13 @@ func _build_boss_bar() -> void:
 	boss_fill.size = BOSS_BAR_RECT.size - Vector2(4, 4)
 	boss_fill.color = Color(0.85, 0.15, 0.15, 1)
 	boss_bar.add_child(boss_fill)
-	var label := Label.new()
-	label.text = boss_name
-	label.position = Vector2(0, -30)
-	label.add_theme_font_size_override("font_size", 20)
-	label.add_theme_constant_override("outline_size", 6)
-	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	boss_bar.add_child(label)
+	boss_label = Label.new()
+	boss_label.text = boss_name
+	boss_label.position = Vector2(0, -30)
+	boss_label.add_theme_font_size_override("font_size", 20)
+	boss_label.add_theme_constant_override("outline_size", 6)
+	boss_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	boss_bar.add_child(boss_label)
 	kill_label.get_parent().add_child(boss_bar)
 	# Under the fade so it fades with the screen.
 	kill_label.get_parent().move_child(boss_bar, fade.get_index())
@@ -1675,7 +1718,8 @@ func _update_boss_bar() -> void:
 	boss_bar.visible = show
 	if show:
 		boss_fill.size.x = (BOSS_BAR_RECT.size.x - 4) * float(boss.hp) / boss.max_hp
-		while brood_called < boss_brood_at.size() and boss.hp <= boss.max_hp * boss_brood_at[brood_called]:
+		var brood_at := final_boss_brood_at if stage == 3 else boss_brood_at
+		while brood_called < brood_at.size() and boss.hp <= boss.max_hp * brood_at[brood_called]:
 			brood_called += 1
 			_call_brood(boss)
 
@@ -1717,12 +1761,15 @@ func _call_brood(boss: Node2D) -> void:
 	for i in mini(boss_brood_count, spots.size()):
 		var enemy := enemy_scene.instantiate()
 		enemy.position = spots[i]
-		enemy.sprite_sheet = HUSK_CRAWLER_TEX
+		if stage == 3:
+			_make_ranged(enemy)
+		else:
+			enemy.sprite_sheet = HUSK_CRAWLER_TEX
 		enemy.detect_range = INF
 		enemy.lose_range = INF
 		enemies.add_child(enemy)
-	print("%s calls %d brood" % [boss_name, boss_brood_count])
-	_show_banner("%s calls her brood!" % boss_name, brood_color)
+	print("%s calls %d brood" % [current_boss_name, boss_brood_count])
+	_show_banner("%s calls her brood!" % current_boss_name, brood_color)
 	_update_kill_label()
 
 
