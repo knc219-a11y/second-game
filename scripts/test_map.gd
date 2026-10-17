@@ -291,6 +291,22 @@ const GRADE_COLORS := {"S": Color(1, 0.85, 0.2, 1), "A": Color(0.5, 0.85, 1, 1),
 @export var s_special_chance: float = 0.5
 var stage_cleared: bool = false
 var moving_on: bool = false
+# First Stage 3 clear: walking into its exit shows the ending card (_show_ending)
+# before town. The ending fires once, when the clear opens the dungeon.
+var ending_pending: bool = false
+var ending: CanvasLayer = null
+const ENDING_TEXT := """THE END
+
+The heart of the dead god beat once, then went still.
+Husk Flats, Rib Field and Vein Hollow fall quiet.
+Hidehold lives on what you carried back.
+
+But the corpse keeps growing.
+Below the town, The Wound has opened.
+
+Thanks for playing.
+
+X: return to Hidehold"""
 
 # Endless mode only: keeps a few enemies around so a fight doesn't end after 3 kills.
 # While fewer than keep_alive enemies are alive, one more appears every
@@ -1113,6 +1129,9 @@ func _clear_stage() -> void:
 	var a_hits := stage1_grade_a_hits if stage == 1 else grade_a_hits
 	var grade := "S" if hits <= s_hits else ("A" if hits <= a_hits else "B")
 	var best := _save_best_grade(grade)
+	var cfg := ConfigFile.new()
+	cfg.load(player.SAVE_PATH)
+	ending_pending = stage == STAGES.size() and cfg.get_value("progress", "unlocked", 1) <= STAGES.size()
 	_save_unlock(stage + 1)
 	if grade == "S":
 		player.drop_luck = mini(player.drop_luck + 1, player.max_drop_luck)
@@ -1251,10 +1270,53 @@ func _move_on(target: int, next_area: int = 1) -> void:
 	moving_on = false
 
 
+# Full-screen card over everything; the Player stands still under it (physics
+# off, as on death) until X or Enter, then the usual fade back to town.
+func _show_ending() -> void:
+	ending_pending = false
+	# Keeps the pause menu and inventory shut; _move_on clears it again.
+	moving_on = true
+	player.set_physics_process(false)
+	player.velocity = Vector2.ZERO
+	ending = CanvasLayer.new()
+	ending.name = "Ending"
+	ending.layer = 20
+	var bg := ColorRect.new()
+	bg.color = Color(0.06, 0.02, 0.03, 1)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ending.add_child(bg)
+	var label := Label.new()
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 28)
+	label.text = ENDING_TEXT
+	ending.add_child(label)
+	ending.visible = true
+	bg.modulate.a = 0.0
+	label.modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property(bg, "modulate:a", 1.0, 0.6)
+	tween.tween_property(label, "modulate:a", 1.0, 0.8)
+	add_child(ending)
+	print("Ending")
+
+
+func _close_ending() -> void:
+	ending.queue_free()
+	ending = null
+	player.set_physics_process(true)
+	_move_on(0)
+
+
 # Pause menu "Return to Town" from a stage or the dungeon: drops what is left
 # there (enemies, shots in the air, dungeon loop) and fades back to town.
 # Gear, pet and saved progress stay as they are.
 func return_to_town() -> void:
+	# Leaving the first Stage 3 clear from the pause menu still shows the ending.
+	if ending_pending:
+		_show_ending()
+		return
 	endless_mode = false
 	keep_alive = base_keep_alive
 	for e in enemies.get_children():
@@ -1281,6 +1343,10 @@ func _enter_dungeon() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if ending != null:
+		if Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("ui_accept"):
+			_close_ending()
+		return
 	_update_prop_fade()
 	_update_boss_bar()
 	if player.get("is_dead") == true:
@@ -1302,6 +1368,8 @@ func _physics_process(delta: float) -> void:
 		elif stage_cleared and player.position.distance_to(exit_position) <= exit_radius:
 			if area < _area_count():
 				_move_on(stage, area + 1)
+			elif ending_pending:
+				_show_ending()
 			else:
 				_move_on(0)
 		return
