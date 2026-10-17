@@ -55,6 +55,18 @@ const STAGE1_AREAS := [
 ]
 # The last area is the boss fight (see _make_boss).
 const STAGE1_AREA_NAMES := ["1-1", "1-2", "1-3", "1-BOSS"]
+# Stage 2 (bone): its field (STAGES entry), then 2-2 with three Rib Crawler
+# (tough) packs, one per lane of the broken walls (the outer two at the
+# doorways, so they don't get stuck behind a wall), then 2-BOSS: the Rib
+# Brute alone in the middle lane (see _make_rib_brute).
+const STAGE2_AREAS := [
+	STAGES[1],
+	[["tough", Vector2(775, 150), 0], ["normal", Vector2(720, 110), 0], ["normal", Vector2(830, 110), 0],
+	["tough", Vector2(700, 450), 1], ["normal", Vector2(640, 520), 1],
+	["tough", Vector2(875, 780), 2], ["normal", Vector2(820, 820), 2], ["normal", Vector2(930, 820), 2]],
+	[["boss", Vector2(1000, 450)]],
+]
+const STAGE2_AREA_NAMES := ["2-1", "2-2", "2-BOSS"]
 # Stage 3 is the last stage: its field (STAGES entry), then the final boss
 # alone between the four pillars. Its kill clears the stage, so the ending
 # card (first clear) comes after it.
@@ -627,6 +639,8 @@ func _spawn_stage() -> void:
 			_make_leader(enemy)
 		elif entry[0] == "flinger":
 			_make_flinger(enemy)
+		elif entry[0] == "boss" and stage == 2:
+			_make_rib_brute(enemy)
 		elif entry[0] == "boss":
 			_make_boss(enemy)
 		else:
@@ -1186,6 +1200,8 @@ func _stage_number() -> String:
 func _areas() -> Array:
 	if stage == 1:
 		return STAGE1_AREAS
+	if stage == 2:
+		return STAGE2_AREAS
 	if stage == 3:
 		return STAGE3_AREAS
 	return [STAGES[(stage - 1) % STAGES.size()]]
@@ -1194,6 +1210,8 @@ func _areas() -> Array:
 func _area_names() -> Array:
 	if stage == 1:
 		return STAGE1_AREA_NAMES
+	if stage == 2:
+		return STAGE2_AREA_NAMES
 	if stage == 3:
 		return STAGE3_AREA_NAMES
 	return [str(stage)]
@@ -1677,6 +1695,46 @@ func _make_boss(enemy: Node) -> void:
 	enemy.get_node("HpLabel").visible = false
 
 
+# Stage 2 boss: Rib Brute, a Rib Crawler (tough) grown huge: super armor
+# like every tough, barely pushed, a slow wide swing and the leader's leap
+# from further away. Calls two Husk Crawlers at 66 / 33 % like the Husk
+# Matron (boss_brood_at). Placeholder look: the Rib Crawler strip scaled up.
+@export var rib_brute_name: String = "Rib Brute"
+@export var rib_brute_hp: int = 380
+@export var rib_brute_damage: int = 14
+@export var rib_brute_sprite_scale: float = 2.6
+@export var rib_brute_size_scale: float = 1.7
+
+
+func _make_rib_brute(enemy: Node) -> void:
+	_make_tough(enemy)
+	current_boss_name = rib_brute_name
+	boss_label.text = current_boss_name
+	enemy.name = "Boss"
+	enemy.max_hp = rib_brute_hp
+	enemy.attack_damage = rib_brute_damage
+	enemy.sprite_scale = rib_brute_sprite_scale
+	(enemy.get_node("Body") as Polygon2D).scale = Vector2(rib_brute_sprite_scale, rib_brute_sprite_scale)
+	enemy.size_scale = rib_brute_size_scale
+	enemy.knockback_distance = 6.0
+	enemy.move_speed = 70.0
+	enemy.detect_range = INF
+	enemy.lose_range = INF
+	enemy.stop_distance = 75.0
+	enemy.attack_range = 95.0
+	enemy.vertical_tolerance = 28.0
+	enemy.attack_startup = 0.55
+	enemy.attack_cooldown = 1.3
+	enemy.leap_distance = 180.0
+	enemy.leap_min = 130.0
+	enemy.leap_range = 280.0
+	enemy.leap_startup = 0.7
+	enemy.leap_cooldown = 4.5
+	enemy.drop_chance = 0.0
+	enemy.pet_drop_chance = 0.0
+	enemy.get_node("HpLabel").visible = false
+
+
 # Boss bar along the bottom of the screen: name, then HP as a red fill. Built
 # in code under the Hud, shown only while a boss is alive.
 const BOSS_BAR_RECT := Rect2(340, 664, 600, 16)
@@ -1769,7 +1827,7 @@ func _call_brood(boss: Node2D) -> void:
 		enemy.lose_range = INF
 		enemies.add_child(enemy)
 	print("%s calls %d brood" % [current_boss_name, boss_brood_count])
-	_show_banner("%s calls her brood!" % current_boss_name, brood_color)
+	_show_banner("%s calls %s brood!" % [current_boss_name, "its" if stage == 2 else "her"], brood_color)
 	_update_kill_label()
 
 
