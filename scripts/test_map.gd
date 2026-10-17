@@ -129,6 +129,9 @@ const HEAP_STACK := 45.0
 # centre (40,60); see enemy.gd sprite_sheet.
 const HUSK_CRAWLER_TEX := preload("res://art/stage1/enemies/s1_husk_crawler.png")
 const BOSS_TEX := preload("res://art/stage1/enemies/s1_boss_husk_matron.png")
+# Clot Matron: the Husk Matron sheet recoloured into the blood lineage (same
+# frames), placeholder until her own art.
+const CLOT_MATRON_TEX := preload("res://art/stage3/enemies/s3_clot_matron.png")
 # Tough (bone) and ranged (blood) enemies wear Husk Crawler strips recoloured
 # by godot-arpg-design/s23-enemy-check/recolor_crawler.py (same frames and
 # origin; placeholder until real art): an ivory Rib Crawler with dark marrow,
@@ -1644,14 +1647,15 @@ func _spawn_enemy() -> void:
 @export var boss_damage: int = 15
 @export var boss_size_scale: float = 1.9
 # Stage 3 final boss: Clot Matron, the Husk Matron swollen with the god's
-# blood (her sprite tinted dark red until her own art). More HP, harder
-# hits, a quicker swing; she calls her brood three times, Vein Spitters
-# (ranged) instead of Husk Crawlers.
+# blood (CLOT_MATRON_TEX until her own art). More HP, harder hits, a quicker
+# swing; she calls her brood three times, Vein Spitters (ranged) instead of
+# Husk Crawlers.
 @export var final_boss_name: String = "Clot Matron"
 @export var final_boss_hp: int = 480
 @export var final_boss_damage: int = 18
 @export var final_boss_cooldown: float = 1.2
-@export var final_boss_color: Color = Color(1, 0.45, 0.45, 1)
+# Extra tint over her sheet (white = the sheet as drawn).
+@export var final_boss_color: Color = Color.WHITE
 @export var final_boss_brood_at: PackedFloat32Array = PackedFloat32Array([0.75, 0.5, 0.25])
 # Name of the boss alive now (bar label, brood banner).
 var current_boss_name: String = ""
@@ -1664,10 +1668,10 @@ func _make_boss(enemy: Node) -> void:
 	enemy.name = "Boss"
 	enemy.max_hp = final_boss_hp if final else boss_hp
 	enemy.attack_damage = final_boss_damage if final else boss_damage
+	enemy.sprite_sheet = CLOT_MATRON_TEX if final else BOSS_TEX
 	if final:
 		enemy.sprite_color = final_boss_color
 		enemy.sprite_shard_color = Color(0.55, 0.1, 0.12, 1)
-	enemy.sprite_sheet = BOSS_TEX
 	enemy.sprite_frame_size = Vector2(248, 177)
 	enemy.sprite_origin = Vector2(98, 175)
 	enemy.idle_frames = PackedInt32Array([0, 1, 2, 3])
