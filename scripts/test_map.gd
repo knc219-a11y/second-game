@@ -136,6 +136,10 @@ const BOSS_TEX := preload("res://art/stage1/enemies/s1_boss_husk_matron.png")
 # Husk Crawler everywhere (skin lineage).
 const RIB_CRAWLER_TEX := preload("res://art/stage2/enemies/s2_rib_crawler.png")
 const VEIN_SPITTER_TEX := preload("res://art/stage3/enemies/s3_vein_spitter.png")
+# Rib Brute: the same monster drawn at RIB_BRUTE_ART_SCALE times the crawler
+# size (frames of 208x166), so the big boss stays sharp instead of an upscale.
+const RIB_BRUTE_TEX := preload("res://art/stage2/enemies/s2_rib_brute.png")
+const RIB_BRUTE_ART_SCALE := 2.6
 const ROCK_PILE_TEX := preload("res://art/stage1/props/s1_rock_pile.png")
 const ROCK_PILLAR_TEX := preload("res://art/stage1/props/s1_rock_pillar.png")
 const ROCK_PILE_OFFSET := Vector2(-64, -92)
@@ -1698,7 +1702,8 @@ func _make_boss(enemy: Node) -> void:
 # Stage 2 boss: Rib Brute, a Rib Crawler (tough) grown huge: super armor
 # like every tough, barely pushed, a slow wide swing and the leader's leap
 # from further away. Calls two Husk Crawlers at 66 / 33 % like the Husk
-# Matron (boss_brood_at). Placeholder look: the Rib Crawler strip scaled up.
+# Matron (boss_brood_at). Placeholder look: the Rib Crawler drawn big
+# (RIB_BRUTE_TEX).
 @export var rib_brute_name: String = "Rib Brute"
 @export var rib_brute_hp: int = 380
 @export var rib_brute_damage: int = 14
@@ -1713,7 +1718,10 @@ func _make_rib_brute(enemy: Node) -> void:
 	enemy.name = "Boss"
 	enemy.max_hp = rib_brute_hp
 	enemy.attack_damage = rib_brute_damage
-	enemy.sprite_scale = rib_brute_sprite_scale
+	enemy.sprite_sheet = RIB_BRUTE_TEX
+	enemy.sprite_frame_size = Vector2(208, 166)
+	enemy.sprite_origin = Vector2(104, 156)
+	enemy.sprite_scale = rib_brute_sprite_scale / RIB_BRUTE_ART_SCALE
 	(enemy.get_node("Body") as Polygon2D).scale = Vector2(rib_brute_sprite_scale, rib_brute_sprite_scale)
 	enemy.size_scale = rib_brute_size_scale
 	enemy.knockback_distance = 6.0
