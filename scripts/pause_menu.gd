@@ -2,9 +2,11 @@ extends CanvasLayer
 
 # Esc pauses the game and shows this menu (it keeps running while the tree is
 # paused). Up/Down picks, X or Enter confirms, Esc again resumes.
-# Return to Town is only listed in a stage or the dungeon.
+# Return to Town is only listed in a stage or the dungeon. Controls shows the
+# title screen's key list; X, Enter or Esc goes back to the menu.
 
 const TITLE_SCENE := "res://scenes/title.tscn"
+const TITLE_SCRIPT := preload("res://scripts/title.gd")
 
 var options: Array[String] = []
 var selected := 0
@@ -13,10 +15,13 @@ var resume_pending := false
 
 @onready var map: Node = get_parent()
 @onready var menu_label: Label = $Menu
+var controls: Label
 
 
 func _ready() -> void:
 	visible = false
+	controls = TITLE_SCRIPT.make_controls_label()
+	add_child(controls)
 
 
 func _process(_delta: float) -> void:
@@ -27,6 +32,10 @@ func _process(_delta: float) -> void:
 	if not visible:
 		if Input.is_action_just_pressed("pause") and _can_pause():
 			_open()
+		return
+	if controls.visible:
+		if Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("ui_accept") or Input.is_action_just_pressed("pause"):
+			controls.visible = false
 		return
 	if Input.is_action_just_pressed("pause"):
 		_resume()
@@ -50,6 +59,7 @@ func _open() -> void:
 	options = ["Resume"]
 	if not map.in_hub:
 		options.append("Return to Hidehold")
+	options.append("Controls")
 	options.append("Title")
 	selected = 0
 	_refresh()
@@ -65,6 +75,8 @@ func _choose(choice: String) -> void:
 		"Return to Hidehold":
 			_resume()
 			map.return_to_town()
+		"Controls":
+			controls.visible = true
 		"Title":
 			_resume()
 			Engine.time_scale = 1.0
@@ -73,6 +85,7 @@ func _choose(choice: String) -> void:
 
 func _resume() -> void:
 	resume_pending = false
+	controls.visible = false
 	visible = false
 	get_tree().paused = false
 	print("Resumed")
