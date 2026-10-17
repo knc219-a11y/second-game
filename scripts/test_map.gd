@@ -87,6 +87,11 @@ const STAGE1_AREA_ROCKS := [
 # rocks. Kept dark so the red normal, bone tough and violet ranged
 # enemies, the pet and the drops stay readable on top.
 const STAGE_FLOOR_COLORS := [Color(0.4, 0.3, 0.29, 1), Color(0.2, 0.19, 0.18, 1), Color(0.22, 0.1, 0.11, 1)]
+# Stages 2 and 3 paint the floor polygon with one seamless 512px texture,
+# repeated (made by godot-arpg-design/s23-ground-check/make_floor.py; no
+# source art yet): 2 porous grey bone with half-buried ribs, 3 raw wet flesh
+# with veins and clotted pools. Stage 1 has its tiles instead (null here).
+const STAGE_FLOOR_TEXTURES := [null, preload("res://art/stage2/tiles/s2_floor.png"), preload("res://art/stage3/tiles/s3_floor.png")]
 # Stage 1 rocks wear painted props instead of the flat boxes. Both PNGs have
 # their origin at the bottom centre (offset below); collisions stay the boxes.
 # Stage 1 normal enemy (Husk Crawler): 4 frames of 80x64, origin at the feet
@@ -221,7 +226,8 @@ const HUB_GATES := [Vector2(600, 540), Vector2(850, 540), Vector2(1100, 540), Ve
 const HUB_FLOOR_COLOR := Color(0.33, 0.3, 0.25, 1)
 # Stage 1 floor is painted with s1_ground.png tiles (atlas row 0: 4 base, 2
 # cracked, 2 red vein). Fixed seed so the floor looks the same every visit;
-# other stages, town and dungeon keep the flat colour floor and grid.
+# stages 2-3 have a painted floor texture (STAGE_FLOOR_TEXTURES); town and
+# dungeon keep the flat colour floor and grid.
 const GROUND_SIZE := Vector2i(25, 15)
 const GROUND_SEED := 1
 @export var ground_crack_chance: float = 0.08
@@ -427,7 +433,7 @@ func _enter_hub() -> void:
 	stage_cleared = false
 	exit_gate.visible = false
 	_build_rocks([])
-	floor_poly.color = HUB_FLOOR_COLOR
+	_set_floor(HUB_FLOOR_COLOR)
 	_show_ground(false)
 	var cfg := ConfigFile.new()
 	cfg.load(player.SAVE_PATH)
@@ -475,7 +481,8 @@ func _spawn_stage() -> void:
 			_spawn_hidden_cache()
 		elif AREA_CACHES.has(area):
 			_spawn_hidden_cache(AREA_CACHES[area][0], AREA_CACHES[area][1])
-	floor_poly.color = STAGE_FLOOR_COLORS[(stage - 1) % STAGE_FLOOR_COLORS.size()]
+	var floor_i := (stage - 1) % STAGE_FLOOR_COLORS.size()
+	_set_floor(STAGE_FLOOR_COLORS[floor_i], STAGE_FLOOR_TEXTURES[floor_i])
 	_show_ground(stage == 1)
 	var packs := {}
 	var entries: Array = STAGE1_AREAS[area - 1] if stage == 1 else STAGES[(stage - 1) % STAGES.size()]
@@ -536,11 +543,18 @@ func _luck_hud() -> String:
 	return "   Drop luck +%d" % player.drop_luck if player.drop_luck > 0 else ""
 
 
+# Flat colour floor, or a repeated painted texture (no grid over it).
+func _set_floor(color: Color, tex: Texture2D = null) -> void:
+	floor_poly.texture = tex
+	floor_poly.color = Color(1, 1, 1, 1) if tex else color
+	grid.visible = tex == null
+
+
 # Tiled floor on, grid off (or the other way round). Fills the layer once.
 func _show_ground(on: bool) -> void:
 	_show_backdrop(on)
 	ground.visible = on
-	grid.visible = not on
+	grid.visible = not on and floor_poly.texture == null
 	if not on or ground.get_used_cells().size() > 0:
 		return
 	var rng := RandomNumberGenerator.new()
@@ -1204,7 +1218,7 @@ func _enter_dungeon() -> void:
 	kills = 0
 	respawn_left = respawn_delay
 	_build_rocks(DUNGEON_ROCKS, DUNGEON_ROCK_COLOR)
-	floor_poly.color = DUNGEON_FLOOR_COLOR
+	_set_floor(DUNGEON_FLOOR_COLOR)
 	_show_ground(false)
 	print("Dungeon")
 	_show_banner(DUNGEON_NAME)
