@@ -112,6 +112,13 @@ const HEAP_STACK := 45.0
 # centre (40,60); see enemy.gd sprite_sheet.
 const HUSK_CRAWLER_TEX := preload("res://art/stage1/enemies/s1_husk_crawler.png")
 const BOSS_TEX := preload("res://art/stage1/enemies/s1_boss_husk_matron.png")
+# Tough (bone) and ranged (blood) enemies wear Husk Crawler strips recoloured
+# by godot-arpg-design/s23-enemy-check/recolor_crawler.py (same frames and
+# origin; placeholder until real art): an ivory Rib Crawler with dark marrow,
+# a crimson Vein Spitter with glowing magenta veins. Normal enemies wear the
+# Husk Crawler everywhere (skin lineage).
+const RIB_CRAWLER_TEX := preload("res://art/stage2/enemies/s2_rib_crawler.png")
+const VEIN_SPITTER_TEX := preload("res://art/stage3/enemies/s3_vein_spitter.png")
 const ROCK_PILE_TEX := preload("res://art/stage1/props/s1_rock_pile.png")
 const ROCK_PILLAR_TEX := preload("res://art/stage1/props/s1_rock_pillar.png")
 const ROCK_PILE_OFFSET := Vector2(-64, -92)
@@ -519,8 +526,8 @@ func _spawn_stage() -> void:
 			_make_flinger(enemy)
 		elif entry[0] == "boss":
 			_make_boss(enemy)
-		elif stage == 1:
-			# Stage 1 normal (Husk Crawler) wears its painted sprite.
+		else:
+			# Normal (Husk Crawler) wears its painted sprite.
 			enemy.sprite_sheet = HUSK_CRAWLER_TEX
 		enemies.add_child(enemy)
 	for pack in packs.values():
@@ -1354,6 +1361,8 @@ func _spawn_enemy() -> void:
 		_make_tough(enemy)
 	elif roll < tough_chance + ranged_chance:
 		_make_ranged(enemy)
+	else:
+		enemy.sprite_sheet = HUSK_CRAWLER_TEX
 	enemies.add_child(enemy)
 
 
@@ -1552,6 +1561,9 @@ func _make_tough(enemy: Node) -> void:
 	var body := enemy.get_node("Body") as Polygon2D
 	body.color = tough_color
 	body.scale = Vector2(tough_body_scale, tough_body_scale)
+	enemy.sprite_sheet = RIB_CRAWLER_TEX
+	enemy.sprite_scale = tough_body_scale
+	enemy.sprite_shard_color = tough_color
 
 
 func _make_ranged(enemy: Node) -> void:
@@ -1564,3 +1576,6 @@ func _make_ranged(enemy: Node) -> void:
 	var body := enemy.get_node("Body") as Polygon2D
 	body.color = ranged_color
 	body.scale = Vector2(ranged_body_scale, ranged_body_scale)
+	enemy.sprite_sheet = VEIN_SPITTER_TEX
+	enemy.sprite_scale = ranged_body_scale
+	enemy.sprite_shard_color = Color(0.55, 0.12, 0.2, 1)
