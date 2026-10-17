@@ -294,7 +294,24 @@ var moving_on: bool = false
 # First Stage 3 clear: walking into its exit shows the ending card (_show_ending)
 # before town. The ending fires once, when the clear opens the dungeon.
 var ending_pending: bool = false
-var ending: CanvasLayer = null
+var card: CanvasLayer = null
+var card_to_town: bool = false
+# X can't close the card until it has faded in, so the press that started the
+# game (or a mashed attack) doesn't skip it.
+@export var card_lock_time: float = 1.0
+var card_lock_left: float = 0.0
+# New Game (title.gd sets this meta on the root) opens on this card in town.
+const INTRO_TEXT := """Hidehold
+
+A god died, and its corpse became our land.
+The body still heals itself. What grows back wakes up hungry.
+We live on its remains: hunters bring back skin, bone and blood.
+
+Walk into the Husk Flats gate to start your first hunt.
+Between hunts, forge your gear at the anvil here (C).
+Esc > Controls lists every key.
+
+X: begin"""
 const ENDING_TEXT := """THE END
 
 The heart of the dead god beat once, then went still.
@@ -389,6 +406,10 @@ func _ready() -> void:
 		_build_hub_gates()
 		_build_blacksmith()
 		_enter_hub()
+		if get_tree().root.has_meta("new_game_intro"):
+			get_tree().root.remove_meta("new_game_intro")
+			_show_card(INTRO_TEXT, false)
+			print("Intro")
 	enemies.child_exiting_tree.connect(_on_enemy_exiting)
 	_update_kill_label()
 
@@ -1271,42 +1292,51 @@ func _move_on(target: int, next_area: int = 1) -> void:
 
 
 # Full-screen card over everything; the Player stands still under it (physics
-# off, as on death) until X or Enter, then the usual fade back to town.
+# off, as on death) until X or Enter. The ending then fades back to town; the
+# New Game intro just lets the Player walk in town.
 func _show_ending() -> void:
 	ending_pending = false
-	# Keeps the pause menu and inventory shut; _move_on clears it again.
+	_show_card(ENDING_TEXT, true)
+	print("Ending")
+
+
+func _show_card(text: String, to_town: bool) -> void:
+	card_to_town = to_town
+	card_lock_left = card_lock_time
+	# Keeps the pause menu and inventory shut; _move_on or _close_card clears it.
 	moving_on = true
 	player.set_physics_process(false)
 	player.velocity = Vector2.ZERO
-	ending = CanvasLayer.new()
-	ending.name = "Ending"
-	ending.layer = 20
+	card = CanvasLayer.new()
+	card.name = "Card"
+	card.layer = 20
 	var bg := ColorRect.new()
 	bg.color = Color(0.06, 0.02, 0.03, 1)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ending.add_child(bg)
+	card.add_child(bg)
 	var label := Label.new()
 	label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 28)
-	label.text = ENDING_TEXT
-	ending.add_child(label)
-	ending.visible = true
+	label.text = text
+	card.add_child(label)
 	bg.modulate.a = 0.0
 	label.modulate.a = 0.0
 	var tween := create_tween()
 	tween.tween_property(bg, "modulate:a", 1.0, 0.6)
 	tween.tween_property(label, "modulate:a", 1.0, 0.8)
-	add_child(ending)
-	print("Ending")
+	add_child(card)
 
 
-func _close_ending() -> void:
-	ending.queue_free()
-	ending = null
+func _close_card() -> void:
+	card.queue_free()
+	card = null
 	player.set_physics_process(true)
-	_move_on(0)
+	if card_to_town:
+		_move_on(0)
+	else:
+		moving_on = false
 
 
 # Pause menu "Return to Town" from a stage or the dungeon: drops what is left
@@ -1343,9 +1373,10 @@ func _enter_dungeon() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if ending != null:
-		if Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("ui_accept"):
-			_close_ending()
+	if card != null:
+		card_lock_left -= delta
+		if card_lock_left <= 0.0 and Input.is_action_just_pressed("attack") or Input.is_action_just_pressed("ui_accept"):
+			_close_card()
 		return
 	_update_prop_fade()
 	_update_boss_bar()
